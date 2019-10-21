@@ -147,17 +147,22 @@ def process_frcnn(img):
                     probs[cls_name].append(np.max(P_cls[0, ii, :]))
         
         displayRects = []
+        texts = []
         for key in bboxes:
             bbox = np.array(bboxes[key])
             new_boxes, new_probs = roi_helpers.non_max_suppression_fast(bbox, np.array(probs[key]), overlap_thresh=0.5)
             for jk in range(new_boxes.shape[0]):
                 (x1, y1, x2, y2) = new_boxes[jk,:]
                 (real_x1, real_y1, real_x2, real_y2) = get_real_coordinates(ratio, x1, y1, x2, y2)
-                displayRects.append([real_x1, real_y1, real_x2, real_y2])
-        
+                textLabel = '{}: {}'.format(key,int(100*new_probs[jk]))
+                print(textLabel)
+                if key != 'bg':
+                    displayRects.append([real_x1, real_y1, real_x2, real_y2])
+                    texts.append(textLabel)
+                    
         print("Rects found ", len(displayRects))
-        #displayBoxes(img, anchors=displayRects)
-        processed_img = saveResult(img, anchors=displayRects)
+        # displayBoxes(img, anchors=displayRects, texts=texts)
+        processed_img = saveResult(img, anchors=displayRects, texts=texts)
         return processed_img
 
 def init():
@@ -171,25 +176,31 @@ def initTest():
 
 def detectAndSave(img):
     processed_img = process_frcnn(img)
+    cv2.waitKey(0)
     cv2.imwrite('result/cv2.png',processed_img)
     print("Image saved")
 
-def saveResult(img, anchors=[]):
+def saveResult(img, anchors=[], texts=[]):
     coloraa = (255, 0, 0)
     for i in range(len(anchors)):
         a = anchors[i]
+        txt = texts[i]
         x1, y1, x2, y2 = int(a[0]), int(a[1]), int(a[2]), int(a[3])
+        cv2.putText(img, txt, (x1, y1+10), cv2.FONT_HERSHEY_SIMPLEX, 0.3, (255, 255, 255), thickness=1, lineType=cv2.LINE_AA) 
         cv2.rectangle(img, (x1, y1), (x2, y2), coloraa, 2)
         cv2.circle(img, (int((x1+x2)/2), int((y1+y2)/2)), 3, coloraa, -1)
     return img
 
-def displayBoxes(img, anchors=[], rois=[], showBox=True): 
+def displayBoxes(img, anchors=[], rois=[], showBox=True, texts=[]): 
     colorbb = (0, 255, 0)
     coloraa = (255, 0, 0)
     
     for i in range(len(anchors)):
         a = anchors[i]
+        txt = texts[i]
         x1, y1, x2, y2 = int(a[0]), int(a[1]), int(a[2]), int(a[3])
+        cv2.putText(img, txt, (x1, y1+10), cv2.FONT_HERSHEY_SIMPLEX, 0.3, (255, 255, 255), thickness=1, lineType=cv2.LINE_AA) 
+
         if showBox:
             cv2.rectangle(img, (x1, y1), (x2, y2), coloraa, 2)
         cv2.circle(img, (int((x1+x2)/2), int((y1+y2)/2)), 3, coloraa, -1)
