@@ -7,3 +7,6 @@ __pycache__
 server/model/model.json
 server/result/
 server/images/
+*.hdf5
+*.img
+*.pickle

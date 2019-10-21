@@ -21,6 +21,7 @@ anchor_box_ratios = [[1, 1], [1, 2], [2, 1]]
 num_features = 512
 num_rois = 32
 
+
 def nn_base(input_tensor=None, trainable=False):
     input_shape = (None, None, 3)
 
@@ -91,7 +92,10 @@ def classifier(base_layers, input_rois, num_rois, nb_classes = 21, trainable=Fal
     return [out_class, out_regr]
 
 def getBaseLayers():
-    print("In")
+    class_mapping = {'tvmonitor': 0, 'train': 1, 'person': 2, 'boat': 3, 'horse': 4, 'cow': 5, 'bottle': 6, 'dog': 7, 'aeroplane': 8, 'car': 9, 'bus': 10, 'bicycle': 11, 'chair': 12, 'diningtable': 13, 'pottedplant': 14, 'bird': 15, 'cat': 16, 'motorbike': 17, 'sheep': 18, 'sofa': 19, 'bg': 20}
+
+    class_mapping = {v: k for k, v in class_mapping.items()}
+
     input_shape_img = (None, None, 3)
     input_shape_features = (None, None, num_features)
 
@@ -100,11 +104,29 @@ def getBaseLayers():
     feature_map_input = Input(shape=input_shape_features)
 
     shared_layers = nn_base(img_input, trainable=True)
-    model_base = Model(img_input, shared_layers)
+    # model_base = Model(img_input, shared_layers)
 
     num_anchors = len(anchor_box_scales) * len(anchor_box_ratios)
-    print(num_anchors)
-    # o_rpn = rpn(shared_layers, num_anchors)
-    # o_classifier = classifier(shared_layers, roi_input, num_rois, nb_classes=len(class_mapping), trainable=True)
+    rpn_layers = rpn(shared_layers, num_anchors)
+    classifier_layers = classifier(feature_map_input, roi_input, num_rois, nb_classes=len(class_mapping), trainable=True)
 
-    return model_base
+    model_rpn = Model(img_input, rpn_layers)
+    model_classifier = Model([feature_map_input, roi_input], classifier_layers)
+
+    # o_classifier = classifier(shared_layers, roi_input, num_rois, nb_classes=len(class_mapping), trainable=True)
+    return shared_layers, model_rpn, model_classifier
+
+# def getRPNLayers(base_layers):
+#     input_shape_img = (None, None, 3)
+#     img_input = Input(shape=input_shape_img)
+    
+#     return rpn_layers
+
+def getCompiledModel():
+    shared_layers, model_rpn, model_classifier = getBaseLayers()
+    #rpn_layers = getRPNLayers(shared_layers)
+    #print(model_rpn.summary())
+    model_rpn.load_weights('model/model_frcnn.hdf5', by_name=True)
+    model_classifier.load_weights('model/model_frcnn.hdf5', by_name=True)
+    print("Loaded weights")
+    return model_rpn, model_classifier
