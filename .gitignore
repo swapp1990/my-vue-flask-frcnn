@@ -3,3 +3,7 @@ node_modules/
 /dist/
 env/
 __pycache__
+*.h5
+server/model/model.json
+server/result/
+server/images/
