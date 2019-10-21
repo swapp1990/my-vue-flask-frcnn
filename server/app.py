@@ -45,7 +45,7 @@ im_size = 600
 img_channel_mean = [103.939, 116.779, 123.68]
 img_scaling_factor = 1.0
 rpn_stride = 16
-num_rois = 32
+num_rois = 300
 
 def convertImage(imgData):
     imgstr = re.search(r'base64,(.*)', str(imgData)).group(1)
@@ -120,8 +120,14 @@ def process_frcnn(img):
             if ROIs.shape[1] == 0:
                 break
 
-            if jk == 9:
-                continue
+            if jk == R.shape[0]//num_rois:
+                #pad R
+                curr_shape = ROIs.shape
+                target_shape = (curr_shape[0],num_rois,curr_shape[2])
+                ROIs_padded = np.zeros(target_shape).astype(ROIs.dtype)
+                ROIs_padded[:, :curr_shape[1], :] = ROIs
+                ROIs_padded[0, curr_shape[1]:, :] = ROIs[0, 0, :]
+                ROIs = ROIs_padded
 
             [P_cls, P_regr] = model_classifier.predict([F, ROIs])
             for ii in range(P_cls.shape[1]):
@@ -131,20 +137,20 @@ def process_frcnn(img):
                 if cls_name not in bboxes:
                     bboxes[cls_name] = []
                     probs[cls_name] = []
-                    (x, y, w, h) = ROIs[0, ii, :]
+                (x, y, w, h) = ROIs[0, ii, :]
 
-                    cls_num = np.argmax(P_cls[0, ii, :])
-                    try:
-                        (tx, ty, tw, th) = P_regr[0, ii, 4*cls_num:4*(cls_num+1)]
-                        tx /= classifier_regr_std[0]
-                        ty /= classifier_regr_std[1]
-                        tw /= classifier_regr_std[2]
-                        th /= classifier_regr_std[3]
-                        x, y, w, h = roi_helpers.apply_regr(x, y, w, h, tx, ty, tw, th)
-                    except:
-                        pass
-                    bboxes[cls_name].append([rpn_stride*x, rpn_stride*y, rpn_stride*(x+w), rpn_stride*(y+h)])
-                    probs[cls_name].append(np.max(P_cls[0, ii, :]))
+                cls_num = np.argmax(P_cls[0, ii, :])
+                try:
+                    (tx, ty, tw, th) = P_regr[0, ii, 4*cls_num:4*(cls_num+1)]
+                    tx /= classifier_regr_std[0]
+                    ty /= classifier_regr_std[1]
+                    tw /= classifier_regr_std[2]
+                    th /= classifier_regr_std[3]
+                    x, y, w, h = roi_helpers.apply_regr(x, y, w, h, tx, ty, tw, th)
+                except:
+                    pass
+                bboxes[cls_name].append([rpn_stride*x, rpn_stride*y, rpn_stride*(x+w), rpn_stride*(y+h)])
+                probs[cls_name].append(np.max(P_cls[0, ii, :]))
         
         displayRects = []
         texts = []

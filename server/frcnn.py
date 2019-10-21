@@ -19,8 +19,7 @@ from RoiPoolingConv import RoiPoolingConv
 anchor_box_scales = [128, 256, 512]
 anchor_box_ratios = [[1, 1], [1, 2], [2, 1]]
 num_features = 512
-num_rois = 32
-
+num_rois = 300
 
 def nn_base(input_tensor=None, trainable=False):
     input_shape = (None, None, 3)
@@ -104,7 +103,6 @@ def getBaseLayers():
     feature_map_input = Input(shape=input_shape_features)
 
     shared_layers = nn_base(img_input, trainable=True)
-    # model_base = Model(img_input, shared_layers)
 
     num_anchors = len(anchor_box_scales) * len(anchor_box_ratios)
     rpn_layers = rpn(shared_layers, num_anchors)
@@ -113,7 +111,6 @@ def getBaseLayers():
     model_rpn = Model(img_input, rpn_layers)
     model_classifier = Model([feature_map_input, roi_input], classifier_layers)
 
-    # o_classifier = classifier(shared_layers, roi_input, num_rois, nb_classes=len(class_mapping), trainable=True)
     return shared_layers, model_rpn, model_classifier
 
 # def getRPNLayers(base_layers):
