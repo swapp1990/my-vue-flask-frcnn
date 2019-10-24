@@ -19,7 +19,7 @@ from RoiPoolingConv import RoiPoolingConv
 anchor_box_scales = [128, 256, 512]
 anchor_box_ratios = [[1, 1], [1, 2], [2, 1]]
 num_features = 512
-num_rois = 300
+num_rois = 32
 
 def nn_base(input_tensor=None, trainable=False):
     input_shape = (None, None, 3)

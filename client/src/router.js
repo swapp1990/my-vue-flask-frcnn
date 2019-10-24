@@ -13,7 +13,7 @@ export default new Router({
   routes: [
     {
       path: '/',
-      name: 'DrawMnist',
+      name: 'ObjDet',
       component: ObjDet,
     },
     {
