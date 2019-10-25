@@ -4,6 +4,10 @@ import math
 import copy
 import time
 
+import settings
+import utils
+from matplotlib import pyplot as plt
+
 anchor_box_scales = [128, 256, 512]
 anchor_box_ratios = [[1, 1], [1, 2], [2, 1]]
 rpn_stride = 16
@@ -224,29 +228,36 @@ def non_max_suppression_fast(boxes, probs, overlap_thresh=0.9, max_boxes=300):
         boxes = boxes.astype("float")
 
     # initialize the list of picked indexes
-    pick = []
+    picked_idxs = []
 
     # calculate the areas
     area = (x2 - x1) * (y2 - y1)
     # sort the bounding boxes
     #Probs gives high probability for all bboxes including 'bg'. But we want a mixture of 'bg' and other classes.
-    idxs = np.argsort(probs)
-
+    sorted_idxs = np.argsort(probs)
+    picked_idxs = []
+    
+    stepRecord = 0
     # keep looping while some indexes still remain in the indexes
     # list
-    while len(idxs) > 0:
+    while len(sorted_idxs) > 0:
         # grab the last index in the indexes list and add the
         # index value to the list of picked indexes
-        last = len(idxs) - 1
-        i = idxs[last]
-        pick.append(i)
+        last = len(sorted_idxs) - 1
+        i = sorted_idxs[last]
+        picked_idxs.append(i)
 
+        #Debug Steps to capture
+        # stepsToCapture = [1]#[1,5,50,150,290,300]
+        # if len(picked_idxs) in stepsToCapture:
+        #     print("stepRecord ", stepRecord)
+        #     showOverlapBoxes(boxes, i, sorted_idxs)
         # find the intersection
 
-        xx1_int = np.maximum(x1[i], x1[idxs[:last]])
-        yy1_int = np.maximum(y1[i], y1[idxs[:last]])
-        xx2_int = np.minimum(x2[i], x2[idxs[:last]])
-        yy2_int = np.minimum(y2[i], y2[idxs[:last]])
+        xx1_int = np.maximum(x1[i], x1[sorted_idxs[:last]])
+        yy1_int = np.maximum(y1[i], y1[sorted_idxs[:last]])
+        xx2_int = np.minimum(x2[i], x2[sorted_idxs[:last]])
+        yy2_int = np.minimum(y2[i], y2[sorted_idxs[:last]])
 
         ww_int = np.maximum(0, xx2_int - xx1_int)
         hh_int = np.maximum(0, yy2_int - yy1_int)
@@ -254,23 +265,33 @@ def non_max_suppression_fast(boxes, probs, overlap_thresh=0.9, max_boxes=300):
         area_int = ww_int * hh_int
 
         #find the union
-        area_union = area[i] + area[idxs[:last]] - area_int
+        area_union = area[i] + area[sorted_idxs[:last]] - area_int
 
         #compute the ratio of overlap
-        overlap = area_int/(area_union + 1e-6)
+        overlap_arr = area_int/(area_union + 1e-6)
+        #Filter overlapping boxes and remove them including selected box (last) from sorted_idxs
+        filter_idxs = np.where(overlap_arr > overlap_thresh)[0]
 
         #delete all indexes from the index list that have
-        idxs = np.delete(idxs, np.concatenate(([last],
-            np.where(overlap > overlap_thresh)[0])))
+        delete_idxs = np.concatenate(([last], filter_idxs))
+        sorted_idxs = np.delete(sorted_idxs, delete_idxs)
 
-        if len(pick) >= max_boxes:
+        filter_idxs = np.where(overlap_arr > 0.9)[0]
+        #Debug Steps to capture
+        # stepsToCapture = [1,5,50,150,290,300]
+        # if len(picked_idxs) in stepsToCapture:
+        #     print("stepRecord ", stepRecord)
+        #     showPickedBoxes(boxes, sorted_idxs, picked_idxs, filter_idxs)
+        #stepRecord += 1
+
+        if len(picked_idxs) >= max_boxes:
             break
-
+    
+    
     # return only the bounding boxes that were picked using the integer data type
-    boxes = boxes[pick].astype("int")
-    probs = probs[pick]
+    boxes = boxes[picked_idxs].astype("int")
+    probs = probs[picked_idxs]
     return boxes, probs
-
 
 def rpn_to_roi(rpn_layer, regr_layer, dim_ordering, use_regr=True, max_boxes=300,overlap_thresh=0.9):
     std_scaling = 4.0
@@ -343,4 +364,141 @@ def rpn_to_roi(rpn_layer, regr_layer, dim_ordering, use_regr=True, max_boxes=300
     #return top 300 bboxes
     result = non_max_suppression_fast(all_boxes, all_probs, overlap_thresh=overlap_thresh, max_boxes=max_boxes)[0]
 
+    #showImage(result)
+
     return result
+
+######################### DEBUG ####################################################
+def showOverlapBoxes(boxes, currBox_idx, other_idxs):
+    last = len(other_idxs) - 1
+    x1 = boxes[:, 0]
+    y1 = boxes[:, 1]
+    x2 = boxes[:, 2]
+    y2 = boxes[:, 3]
+    area = (x2 - x1) * (y2 - y1)
+    i = currBox_idx
+
+    xx1_int = np.maximum(x1[i], x1[other_idxs[:last]])
+    yy1_int = np.maximum(y1[i], y1[other_idxs[:last]])
+    xx2_int = np.minimum(x2[i], x2[other_idxs[:last]])
+    yy2_int = np.minimum(y2[i], y2[other_idxs[:last]])
+
+    ww_int = np.maximum(0, xx2_int - xx1_int)
+    hh_int = np.maximum(0, yy2_int - yy1_int)
+
+    area_int = ww_int * hh_int
+
+    #find the union
+    area_union = area[i] + area[other_idxs[:last]] - area_int
+
+    #compute the ratio of overlap
+    overlap_arr = area_int/(area_union + 1e-6)
+    #Filter overlapping boxes and remove them including selected box (last) from sorted_idxs
+    filter_idxs = np.where(overlap_arr > 0.9)[0]
+    print("overlap ", filter_idxs)
+    # img_copy = settings.myDebugList['img'].copy()
+
+
+    # i = currBox_idx
+    # utils.addRectToImg(img_copy,x1[i]*rpn_stride, y1[i]*rpn_stride, x2[i]*rpn_stride, y2[i]*rpn_stride, scaled=True, color=(0,255,0), thickness=2)
+
+    # last = len(other_idxs) - 1
+    # xx1_int = np.maximum(x1[i], x1[other_idxs[:last]])
+    # yy1_int = np.maximum(y1[i], y1[other_idxs[:last]])
+    # xx2_int = np.minimum(x2[i], x2[other_idxs[:last]])
+    # yy2_int = np.minimum(y2[i], y2[other_idxs[:last]])
+
+    # maxRect = {"i":-1, "size":0, "rect":[]}
+    # minRect = {"i":-1, "size":1000, "rect":[]}
+
+    # currCount = 0
+    # maxRange = len(other_idxs)-1
+    # maxBoxes = maxRange
+    # for j in range(maxRange):
+    #     #j = j + 5000
+    #     ww_int = np.maximum(0, xx2_int[j] - xx1_int[j])
+    #     hh_int = np.maximum(0, yy2_int[j] - yy1_int[j])
+    #     #Area of intersection with picked rect
+    #     area_int = ww_int * hh_int
+
+    #     #Area of union of picked rect and selected rect
+    #     area_union = area[i] + area[j] - area_int
+
+    #     #overlapping area
+    #     overlap = area_int/(area_union + 1e-6)
+
+    #     #if overlap > 0.1 and overlap < 0.2 and currCount != maxBoxes:
+    #     if currCount != maxBoxes:
+    #         currCount += 1
+    #         utils.addRectToImg(img_copy,xx1_int[j]*rpn_stride, yy1_int[j]*rpn_stride, xx2_int[j]*rpn_stride, yy2_int[j]*rpn_stride, scaled=True, color=(255,255,0), thickness=1)
+    #         maxRectSize = maxRect["size"]
+    #         if maxRectSize < area[j]:
+    #              maxRect["size"] = area[j]
+    #              maxRect["i"] = j
+    #              maxRect["rect"]= [xx1_int[j]*rpn_stride, yy1_int[j]*rpn_stride, xx2_int[j]*rpn_stride, yy2_int[j]*rpn_stride]
+    #         minRectSize = minRect["size"]
+    #         if minRectSize > area[j]:
+    #             minRect["size"] = area[j]
+    #             minRect["i"] = j
+    #             minRect["rect"]= [xx1_int[j]*rpn_stride, yy1_int[j]*rpn_stride, xx2_int[j]*rpn_stride, yy2_int[j]*rpn_stride]
+    #         #print(area[i], area[j], area_int, area_union, overlap)
+        
+    #     if currCount == maxBoxes:
+    #         break
+    # print("MaxRect ", maxRect["size"], " MinRect", minRect["size"])
+    # #Display Min and Max Rect as seperate color
+    # #Min Box
+    # minBox = minRect["rect"]
+    # utils.addRectToImg(img_copy,minBox[0], minBox[1], minBox[2], minBox[3], scaled=True, color=(0,255,255), thickness=2)
+    # maxBox = maxRect["rect"]
+    # utils.addRectToImg(img_copy,maxBox[0], maxBox[1], maxBox[2], maxBox[3], scaled=True, color=(0,255,255), thickness=2)
+    # #print(len(xx1_int), len(yy1_int), len(xx2_int), len(yy2_int))
+
+    # plt.imshow(img_copy)
+    # plt.show()
+
+def showPickedBoxes(boxes, left_idxs, picked_idxs, filtered_idxs):
+    img_copy = settings.myDebugList['img'].copy()
+    rpn_stride = settings.myDebugList['rpn_stride']
+
+    x1 = boxes[:, 0]
+    y1 = boxes[:, 1]
+    x2 = boxes[:, 2]
+    y2 = boxes[:, 3]
+    (x1, y1, x2, y2) = (x1*rpn_stride, y1*rpn_stride, x2*rpn_stride, y2*rpn_stride)
+
+    print("Left ", len(left_idxs), " Removed", len(filtered_idxs))
+    # for idx in range(len(left_idxs)):
+    #     i = left_idxs[idx]
+    #     utils.addRectToImg(img_copy,x1[i], y1[i], x2[i], y2[i], scaled=True, color=(255,0,0))
+    if len(picked_idxs)>2:
+        picked_idxs = picked_idxs[-2:]
+    for idx in range(len(picked_idxs)):
+        i = picked_idxs[idx]
+        utils.addRectToImg(img_copy,x1[i], y1[i], x2[i], y2[i], scaled=True, color=(0,255,0), thickness=2)
+
+    for idx in range(len(filtered_idxs)):
+        i = filtered_idxs[idx]
+        utils.addRectToImg(img_copy,x1[i], y1[i], x2[i], y2[i], scaled=True, color=(255,0,0))
+    plt.imshow(img_copy)
+    plt.show()
+
+def showImage(boxes):
+    colors=[(0,155,0), (255,0,0)]
+    selColor = colors[0]
+    img_copy = settings.myDebugList['img']
+    ratio = settings.myDebugList['ratio']
+    rpn_stride = settings.myDebugList['rpn_stride']
+    for j in range(len(boxes)):
+        (x1, y1, x2, y2) = boxes[j]
+        (x1, y1, x2, y2) = (x1*rpn_stride, y1*rpn_stride, x2*rpn_stride, y2*rpn_stride)
+        (x1, y1, x2, y2) = utils.get_real_coordinates(ratio, x1, y1, x2, y2)
+        utils.addRectToImg(img_copy, x1, y1, x2, y2, color=selColor)
+    plt.imshow(img_copy)
+    plt.show()
+    #cv2.waitKey(0)
+    #cv2.imwrite(filename,img_copy)
+    #print('Image saved ', filename)
+
+
+

@@ -23,7 +23,9 @@ from matplotlib import pyplot as plt
 
 import frcnn
 import roi_helpers
+import settings
 
+settings.init()
 sys.path.append(os.path.abspath("./model"))
 
 # configuration
@@ -103,6 +105,9 @@ def process_frcnn(img):
     classifier_regr_std = [8.0, 8.0, 4.0, 4.0]
 
     X, ratio = format_img(img)
+    #Make the ratio global
+    settings.myDebugList['ratio'] = ratio
+
     X = np.transpose(X, (0, 2, 3, 1))
     with graph.as_default():
         #Proposes regions on the image X, for all anchor and points on the image, gives a sigmoid class
@@ -198,6 +203,7 @@ def process_frcnn(img):
         return processed_img
 
 def init():
+    settings.myDebugList['rpn_stride'] = rpn_stride
     model_rpn, model_classifier = frcnn.getCompiledModel()
     return model_rpn, model_classifier
 
@@ -206,6 +212,8 @@ def resetImg():
 
 def initTest():
     img = cv2.imread('images/persons.jpg')
+    #make this img global for debugview tasks
+    settings.myDebugList['img'] = img
     processed_img = process_frcnn(img)
     cv2.imwrite('result/final_res.png',processed_img)
 
