@@ -19,8 +19,14 @@ from flask_cors import CORS
 from keras.models import model_from_json
 from keras import backend as K
 from flask import send_file
+from threading import Lock
+lock = Lock()
+import matplotlib
+matplotlib.use('Agg')
 from matplotlib import pyplot as plt
-
+import mpld3
+from mpld3 import plugins
+import random
 import frcnn
 import roi_helpers
 import settings
@@ -409,7 +415,7 @@ def displayBoxes(img, anchors=[], rois=[], showBox=True, texts=[]):
     plt.show()
 
 model_rpn, model_classifier = init()
-initTest()
+#initTest()
 
 # sanity check route
 @app.route('/ping', methods=['GET'])
@@ -431,6 +437,45 @@ def ping_pong():
 #     prob = round(prob, 2)
 #     mypred = pred.argmax()
 #     return jsonify(pred=int(mypred), prob=int(prob))
+x = range(100)
+y = [a * 2 + random.randint(-20, 20) for a in x]
+pie_fracs = [20, 30, 40, 10]
+pie_labels = ["A", "B", "C", "D"]
+def draw_fig(fig_type):
+    """Returns html equivalent of matplotlib figure
+    Parameters
+    ----------
+    fig_type: string, type of figure
+            one of following:
+                    * line
+                    * bar
+    Returns
+    --------
+    d3 representation of figure
+    """
+
+    with lock:
+        fig, ax = plt.subplots()
+        if fig_type == "line":
+            ax.plot(x, y)
+        elif fig_type == "bar":
+            ax.bar(x, y)
+        elif fig_type == "pie":
+            ax.pie(pie_fracs, labels=pie_labels)
+        elif fig_type == "scatter":
+            ax.scatter(x, y)
+        elif fig_type == "hist":
+            ax.hist(y, 10, normed=1)
+        elif fig_type == "area":
+            ax.plot(x, y)
+            ax.fill_between(x, 0, y, alpha=0.2)
+
+    return mpld3.fig_to_html(fig)
+
+@app.route('/query', methods=['POST'])
+def query():
+    data = json.loads(request.data)
+    return draw_fig(data["plot_type"])
 
 @app.route('/detect', methods=['GET', 'POST'])
 def detect():
@@ -461,4 +506,4 @@ def detect():
         return 'detect'
 
 if __name__ == '__main__':
-    app.run(debug=True, use_reloader=False)
+    app.run(debug=True, use_reloader=True)

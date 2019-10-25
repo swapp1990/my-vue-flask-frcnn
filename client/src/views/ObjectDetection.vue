@@ -1,12 +1,10 @@
 <template>
   <div class="container">
       <div class="header clearfix">
-        <h3 class="text-muted">Object Detection Faster RCNN</h3>
+          <h3 class="text-muted">Object Detection Faster RCNN</h3>
       </div>
       <div class="jumbotron">
         <h3 class="jumbotronHeading">Upload an image</h3>
-        
-
         <div class="canvasDiv">
           <picture-input ref="pictureInput" @change="onChange" width="200" height="200" margin="8" accept="image/jpeg,image/png" size="10"
               :removable="true" :customStrings="{
@@ -16,7 +14,7 @@
           </picture-input>
             <br />
             <p style="text-align:center;">
-            <a class="btn btn-success myButton" @click="predict" role="button">Predict</a>
+            <a class="btn btn-success myButton" @click="showMpld3" role="button">Predict</a>
             <a class="btn btn-primary" @click="clear" id="clearButton" role="button">Clear</a>
             </p>
         </div>
@@ -28,6 +26,7 @@
           <input type="range" min="10" max="50" value="15" id="myRange" />
           <p>Value: <span id="sliderValue"></span></p> -->
           <img v-if="imageBytes!=''" v-bind:src="'data:image/jpeg;base64,'+imageBytes" />
+          <div id="mlpcontainer" style="width:70%; height:400px;"></div>
         </div>
       </div>
   </div>
@@ -36,6 +35,7 @@
 <script>
 import PictureInput from 'vue-picture-input'
 import axios from 'axios';
+import $ from 'jquery'
 export default {
   name: "ObjDet",
   mounted() {
@@ -46,7 +46,8 @@ export default {
   },
   data() {
       return {
-          imageBytes: ""
+          imageBytes: "",
+          htmlData: "Test"
       }
   },
   components: {
@@ -78,6 +79,14 @@ export default {
       .catch(error => {
         console.log(error)
       })
+    },
+    showMpld3() {
+      const path = `http://localhost:5000/query`;
+      var qu = {"plot_type":"line"};
+      axios.post(path, qu).then(res => {
+        var graph = $("#mlpcontainer");
+        graph.html(res.data);
+      });
     },
     clear() {
       this.imageBytes = "";
