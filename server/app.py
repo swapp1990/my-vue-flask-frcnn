@@ -12,6 +12,7 @@ import cv2
 import json
 import base64
 import pickle
+import random
 
 from flask import Flask, jsonify, request
 from flask_cors import CORS
@@ -19,19 +20,17 @@ from flask_cors import CORS
 from keras.models import model_from_json
 from keras import backend as K
 from flask import send_file
-from threading import Lock
-lock = Lock()
+
 import matplotlib
 matplotlib.use('Agg')
 from matplotlib import pyplot as plt
-import mpld3
-from mpld3 import plugins
-import random
+
 import frcnn
 import roi_helpers
-import settings
 
-settings.init()
+from util import draw_plots
+import global_vars as g
+
 sys.path.append(os.path.abspath("./model"))
 
 # configuration
@@ -52,8 +51,13 @@ graph = tf.get_default_graph()
 im_size = 600
 img_channel_mean = [103.939, 116.779, 123.68]
 img_scaling_factor = 1.0
-rpn_stride = 16
 num_rois = 32
+
+#Load models and trained weights
+def init():
+    model_rpn, model_classifier = frcnn.getCompiledModel()
+    print("global models set")
+    return model_rpn, model_classifier
 
 def convertImage(imgData):
     imgstr = re.search(r'base64,(.*)', str(imgData)).group(1)
@@ -105,14 +109,10 @@ def get_real_coordinates(ratio, x1, y1, x2, y2):
 
 def process_frcnn(img):
     bbox_threshold = 0.8
-    class_mapping = {'tvmonitor': 0, 'train': 1, 'person': 2, 'boat': 3, 'horse': 4, 'cow': 5, 'bottle': 6, 'dog': 7, 'aeroplane': 8, 'car': 9, 'bus': 10, 'bicycle': 11, 'chair': 12, 'diningtable': 13, 'pottedplant': 14, 'bird': 15, 'cat': 16, 'motorbike': 17, 'sheep': 18, 'sofa': 19, 'bg': 20}
 
-    class_mapping = {v: k for k, v in class_mapping.items()}
-    classifier_regr_std = [8.0, 8.0, 4.0, 4.0]
-
+    g.class_mapping = {v: k for k, v in g.class_mapping.items()}
+    
     X, ratio = format_img(img)
-    #Make the ratio global
-    settings.myDebugList['ratio'] = ratio
 
     X = np.transpose(X, (0, 2, 3, 1))
     with graph.as_default():
@@ -159,14 +159,14 @@ def process_frcnn(img):
             for ii in range(P_cls.shape[1]):
                 if np.max(P_cls[0, ii, :]) < bbox_threshold:
                     (x, y, w, h) = ROIs[0, ii, :]
-                    debug_bboxes1.append([rpn_stride*x, rpn_stride*y, rpn_stride*(x+w), rpn_stride*(y+h)])
+                    debug_bboxes1.append([g.rpn_stride*x, g.rpn_stride*y, g.rpn_stride*(x+w), g.rpn_stride*(y+h)])
                     continue
-                cls_name = class_mapping[np.argmax(P_cls[0, ii, :])]
+                cls_name = g.class_mapping[np.argmax(P_cls[0, ii, :])]
                 if cls_name not in bboxes:
                     bboxes[cls_name] = []
                     probs[cls_name] = []
                 (x, y, w, h) = ROIs[0, ii, :]
-                debug_bboxes2.append([rpn_stride*x, rpn_stride*y, rpn_stride*(x+w), rpn_stride*(y+h)])
+                debug_bboxes2.append([g.rpn_stride*x, g.rpn_stride*y, g.rpn_stride*(x+w), g.rpn_stride*(y+h)])
 
                 max_cls_idx = np.argmax(P_cls[0, ii, :])
                 #Every cls has correspongin 4 coords of reg. So we select reg of max cls only from P_regr
@@ -174,25 +174,25 @@ def process_frcnn(img):
                     #Get Regr of only the selected Class using cls_num
                     (tx, ty, tw, th) = P_regr[0, ii, 4*max_cls_idx:4*(max_cls_idx+1)]
                     #classifier_regr_std gives the proper scale to apply regr.
-                    tx /= classifier_regr_std[0]
-                    ty /= classifier_regr_std[1]
-                    tw /= classifier_regr_std[2]
-                    th /= classifier_regr_std[3]
+                    tx /= g.classifier_regr_std[0]
+                    ty /= g.classifier_regr_std[1]
+                    tw /= g.classifier_regr_std[2]
+                    th /= g.classifier_regr_std[3]
                     x, y, w, h = roi_helpers.apply_regr(x, y, w, h, tx, ty, tw, th)
-                    debug_bboxes3.append([rpn_stride*x, rpn_stride*y, rpn_stride*(x+w), rpn_stride*(y+h)])
+                    debug_bboxes3.append([g.rpn_stride*x, g.rpn_stride*y, g.rpn_stride*(x+w), g.rpn_stride*(y+h)])
 
                 except:
                     pass
-                bboxes[cls_name].append([rpn_stride*x, rpn_stride*y, rpn_stride*(x+w), rpn_stride*(y+h)])
+                bboxes[cls_name].append([g.rpn_stride*x, g.rpn_stride*y, g.rpn_stride*(x+w), g.rpn_stride*(y+h)])
                 probs[cls_name].append(np.max(P_cls[0, ii, :]))
-            step1(img,jk,debug_bboxes1,debug_bboxes2,debug_bboxes3,ratio)
+            #step1(img,jk,debug_bboxes1,debug_bboxes2,debug_bboxes3,ratio)
 
         displayRects = []
         texts = []
         for key in bboxes:
             bbox_arr = np.array(bboxes[key])
             prob_arr = np.array(probs[key])
-            step2(img, bbox_arr,prob_arr,key, ratio)
+            #step2(img, bbox_arr,prob_arr,key, ratio)
             new_boxes, new_probs = roi_helpers.non_max_suppression_fast(bbox_arr,prob_arr,overlap_thresh=0.5)
             for jk in range(new_boxes.shape[0]):
                 (x1, y1, x2, y2) = new_boxes[jk,:]
@@ -204,14 +204,10 @@ def process_frcnn(img):
                     texts.append(textLabel)
                     
         print("Rects found ", len(displayRects))
-        # displayBoxes(img, anchors=displayRects, texts=texts)
-        processed_img = saveResult(img, anchors=displayRects, texts=texts)
-        return processed_img
-
-def init():
-    settings.myDebugList['rpn_stride'] = rpn_stride
-    model_rpn, model_classifier = frcnn.getCompiledModel()
-    return model_rpn, model_classifier
+        fig = draw_plots.displayBoxes(img, anchors=displayRects, texts=texts)
+        #processed_img = saveResult(img, anchors=displayRects, texts=texts)
+        #return processed_img
+        return fig
 
 def resetImg():
     img = cv2.imread('images/persons.jpg')
@@ -222,6 +218,10 @@ def initTest():
     settings.myDebugList['img'] = img
     processed_img = process_frcnn(img)
     cv2.imwrite('result/final_res.png',processed_img)
+
+def processImage(img):
+    X, ratio = format_img(img)
+    settings.myDebugList['ratio'] = ratio
 
 def detectAndSave(img):
     processed_img = process_frcnn(img)
@@ -384,36 +384,6 @@ def saveResult(img, anchors=[], texts=[]):
         cv2.circle(img, (int((x1+x2)/2), int((y1+y2)/2)), 3, coloraa, -1)
     return img
 
-def displayBoxes(img, anchors=[], rois=[], showBox=True, texts=[]): 
-    colorbb = (0, 255, 0)
-    coloraa = (255, 0, 0)
-    
-    for i in range(len(anchors)):
-        a = anchors[i]
-        txt = texts[i]
-        x1, y1, x2, y2 = int(a[0]), int(a[1]), int(a[2]), int(a[3])
-        cv2.putText(img, txt, (x1, y1+10), cv2.FONT_HERSHEY_SIMPLEX, 0.3, (255, 255, 255), thickness=1, lineType=cv2.LINE_AA) 
-
-        if showBox:
-            cv2.rectangle(img, (x1, y1), (x2, y2), coloraa, 2)
-        cv2.circle(img, (int((x1+x2)/2), int((y1+y2)/2)), 3, coloraa, -1)
-    
-    for i in range(len(rois)):
-        roi = rois[i]
-        x1, y1, x2, y2 = int(roi[0]*rpn_stride), int(roi[2]*rpn_stride), int(roi[1]*rpn_stride), int(roi[3]*rpn_stride)
-        #print(x1, y1, x2, y2)
-        cv2.circle(img, (int((x1+x2)/2), int((y1+y2)/2)), 3, coloraa, -1)
-    
-    # for i in range(len(regrs)):
-    #     regr = regrs[i]
-    #     cx1, cx2 = int(regr[0]*16), int(regr[1]*16)
-    #     print(cx1, cx2)
-    #     cv2.circle(img, (cx1, cx2), 3, coloraa, -1)
-    
-    plt.figure(figsize=(8,8))
-    plt.imshow(img)
-    plt.show()
-
 model_rpn, model_classifier = init()
 #initTest()
 
@@ -437,45 +407,13 @@ def ping_pong():
 #     prob = round(prob, 2)
 #     mypred = pred.argmax()
 #     return jsonify(pred=int(mypred), prob=int(prob))
-x = range(100)
-y = [a * 2 + random.randint(-20, 20) for a in x]
-pie_fracs = [20, 30, 40, 10]
-pie_labels = ["A", "B", "C", "D"]
-def draw_fig(fig_type):
-    """Returns html equivalent of matplotlib figure
-    Parameters
-    ----------
-    fig_type: string, type of figure
-            one of following:
-                    * line
-                    * bar
-    Returns
-    --------
-    d3 representation of figure
-    """
-
-    with lock:
-        fig, ax = plt.subplots()
-        if fig_type == "line":
-            ax.plot(x, y)
-        elif fig_type == "bar":
-            ax.bar(x, y)
-        elif fig_type == "pie":
-            ax.pie(pie_fracs, labels=pie_labels)
-        elif fig_type == "scatter":
-            ax.scatter(x, y)
-        elif fig_type == "hist":
-            ax.hist(y, 10, normed=1)
-        elif fig_type == "area":
-            ax.plot(x, y)
-            ax.fill_between(x, 0, y, alpha=0.2)
-
-    return mpld3.fig_to_html(fig)
 
 @app.route('/query', methods=['POST'])
 def query():
+    img = cv2.imread('images/persons.jpg')
+    fig = process_frcnn(img)
     data = json.loads(request.data)
-    return draw_fig(data["plot_type"])
+    return fig
 
 @app.route('/detect', methods=['GET', 'POST'])
 def detect():

@@ -82,7 +82,7 @@ export default {
     },
     showMpld3() {
       const path = `http://localhost:5000/query`;
-      var qu = {"plot_type":"line"};
+      var qu = {"plot_type":"bar"};
       axios.post(path, qu).then(res => {
         var graph = $("#mlpcontainer");
         graph.html(res.data);
