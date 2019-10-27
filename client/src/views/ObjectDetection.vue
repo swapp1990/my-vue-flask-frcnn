@@ -72,7 +72,8 @@ export default {
             { size: "256" },
             { size: "512" }
           ],
-          selectedSizes: ["128"]
+          selectedSizes: ["128"],
+          nonMaxIdx: 0
       }
   },
   components: {
@@ -106,13 +107,15 @@ export default {
       })
     },
     showMpld3() {
-      const path = `http://localhost:5000/getRois`;
-      var params = {"start_range":this.start, "end_range":this.end, 
-                    "ratios": this.selectedRatios,
-                    "sizes": this.selectedSizes};
+      const path = `http://localhost:5000/getNonmax`;
+      // var params = {"start_range":this.start, "end_range":this.end, 
+      //               "ratios": this.selectedRatios,
+      //               "sizes": this.selectedSizes};
+      var params = {"nonMaxIdx": this.nonMaxIdx}
       axios.post(path, params).then(res => {
         var graph = $("#mlpcontainer");
         graph.html(res.data);
+        this.nonMaxIdx++;
       });
     },
     clear() {

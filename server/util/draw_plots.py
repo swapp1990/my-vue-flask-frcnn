@@ -18,7 +18,7 @@ def draw_img(img):
     ax.imshow(img_copy)
     return mpld3.fig_to_html(fig)
 
-def displayBoxes(img, anchors=[], rois=[], showBox=True, texts=[]):
+def displayBoxes(img, anchors=[], rois=[], frois=[], showBox=True, texts=[]):
     img_copy = img.copy()
     colorbb = (0, 255, 0)
     coloraa = (255, 0, 0)
@@ -35,8 +35,11 @@ def displayBoxes(img, anchors=[], rois=[], showBox=True, texts=[]):
     for i in range(len(rois)):
         roi = rois[i]
         x1, y1, x2, y2 = int(roi[0]*g.rpn_stride), int(roi[1]*g.rpn_stride), int(roi[2]*g.rpn_stride), int(roi[3]*g.rpn_stride)
-        addRectToImg(img_copy, x1, y1, x2, y2, scaled=True)
-    
+        addRectToImg(img_copy, x1, y1, x2, y2, scaled=True, color=(0,255,0))
+    for i in range(len(frois)):
+        froi = frois[i]
+        x1, y1, x2, y2 = int(froi[0]), int(froi[1]), int(froi[2]), int(froi[3])
+        addRectToImg(img_copy, x1, y1, x2, y2, scaled=True, color=(0,0,255))
     #Debug
     #cv2.imwrite('result/roi_debug.png',img_copy)
 
@@ -47,6 +50,14 @@ def displayBoxes(img, anchors=[], rois=[], showBox=True, texts=[]):
     # plt.figure(figsize=(8,8))
     # plt.imshow(img)
     # plt.show()
+
+def showOverlapBoxes(img, selectedRect):
+    img_copy = img.copy()
+    x1, y1, x2, y2 = int(selectedRect[0]), int(selectedRect[1]), int(selectedRect[2]), int(selectedRect[3])
+    addRectToImg(img_copy, x1, y1, x2, y2, scaled=True)
+    fig, ax = plt.subplots()
+    ax.imshow(img_copy)
+    return mpld3.fig_to_html(fig)
 
 def addRectToImg(img, x1, y1, x2, y2, scaled=False, color=(255,0,0), thickness=1):
     if scaled:

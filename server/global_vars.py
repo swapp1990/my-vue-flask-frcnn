@@ -21,15 +21,20 @@ ratio = 1.0
 global classifier_regr_std
 classifier_regr_std = [8.0, 8.0, 4.0, 4.0]
 
-global rpn_stride
+global rpn_stride, num_rois
 rpn_stride = 16
+num_rois = 32
 
 #Objects
 global model_rpn, model_classifier, graph
-global ROIs
+global ROIs, filteredROIs
 
 #Debug
 global debug_img
 global anchor_scales_d, anchor_ratios_d
+global d_bbox, d_prob
+global bbox_threshold
+global picked_idxs, sorted_idxs
 anchor_scales_d = [128]
 anchor_ratios_d = [[1, 1]]
+bbox_threshold = 0.7

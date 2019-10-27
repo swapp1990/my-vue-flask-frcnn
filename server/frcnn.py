@@ -22,7 +22,6 @@ from util import image_processing as IP, draw_plots
 import roi_helpers
 
 num_features = 512
-num_rois = 32
 
 def nn_base(input_tensor=None, trainable=False):
     input_shape = (None, None, 3)
@@ -102,14 +101,14 @@ def getBaseLayers():
     input_shape_features = (None, None, num_features)
 
     img_input = Input(shape=input_shape_img)
-    roi_input = Input(shape=(num_rois, 4))
+    roi_input = Input(shape=(G.num_rois, 4))
     feature_map_input = Input(shape=input_shape_features)
 
     shared_layers = nn_base(img_input, trainable=True)
 
     num_anchors = len(G.anchor_box_scales) * len(G.anchor_box_ratios)
     rpn_layers = rpn(shared_layers, num_anchors)
-    classifier_layers = classifier(feature_map_input, roi_input, num_rois, nb_classes=len(class_mapping), trainable=True)
+    classifier_layers = classifier(feature_map_input, roi_input, G.num_rois, nb_classes=len(class_mapping), trainable=True)
 
     model_rpn = Model(img_input, rpn_layers)
     model_classifier = Model([feature_map_input, roi_input], classifier_layers)
@@ -137,6 +136,7 @@ def getCompiledModel():
 # 'img': Input Image
 def processRpnToROI(img):
     G.class_mapping = {v: k for k, v in G.class_mapping.items()}
+    G.filteredROIs = []
 
     X, ratio = IP.format_img(img)
     G.ratio = ratio
@@ -150,24 +150,86 @@ def processRpnToROI(img):
         
         #Select the proper top 300 from all RPN values and get the ROI (x1,y1,x2,y2) based on overlap threshold.
         #R => (300, 4): 300 * (x1,y1,x2,y2)
-        R = roi_helpers.rpn_to_roi(cls_sigmoid, bbox_regr, K.common.image_dim_ordering(), overlap_thresh=0.7, debug=True)
+        R = roi_helpers.rpn_to_roi(cls_sigmoid, bbox_regr, K.common.image_dim_ordering(), overlap_thresh=0.7, debug=False)
         G.ROIs = R
-        print(G.ROIs.shape)
+        print("ROIs ", G.ROIs.shape)
 
-# def restartProcessRpn(img):
-#     X, ratio = IP.format_img(img)
-#     G.ratio = ratio
-#     G.debug_img = img
-#     X = np.transpose(X, (0, 2, 3, 1))
-#     with G.graph.as_default():
-#         [cls_sigmoid, bbox_regr, base_layers] = G.model_rpn.predict(X)
-#         R = roi_helpers.rpn_to_roi(cls_sigmoid, bbox_regr, K.common.image_dim_ordering(), overlap_thresh=0.7, debug=True)
-#         G.ROIs = R
-#         fig = draw_plots.displayBoxes(G.debug_img, rois=Debug_R)
-#         return fig
+        # convert from (x1,y1,x2,y2) to (x,y,w,h)
+        R[:, 2] -= R[:, 0]
+        R[:, 3] -= R[:, 1]
+
+        # apply the spatial pyramid pooling to the proposed regions
+        bboxes = {}
+        probs = {}
+
+         #print(R.shape[0]) #300//32 => 9 pools with 32 ROI
+        for jk in range(R.shape[0]//G.num_rois + 1):
+            pyramid_ROIs = np.expand_dims(R[G.num_rois*jk:G.num_rois*(jk+1), :], axis=0)
+            if pyramid_ROIs.shape[1] == 0:
+                break
+
+            if jk == R.shape[0]//G.num_rois:
+                continue
+
+            #For 32 ROIs, predict probability (all 21 classes) and regr boxes (matches the class?)
+            #P_regr: 4 coord of Regression for each class (out of 20). 20 classes minus 'bg'
+            [P_cls, P_regr] = G.model_classifier.predict([base_layers, pyramid_ROIs])
+
+            #print(P_cls.shape) #(1,32,21) (1,num_rois, num_classes)
+            #print(P_regr.shape) #(1,32,80) (1,num_rois,4*(num_classes-1))
+
+            for ii in range(P_cls.shape[1]):
+                if np.max(P_cls[0, ii, :]) < G.bbox_threshold:
+                    continue
+                cls_name = G.class_mapping[np.argmax(P_cls[0, ii, :])]
+                if cls_name not in bboxes:
+                    bboxes[cls_name] = []
+                    probs[cls_name] = []
+                (x, y, w, h) = pyramid_ROIs[0, ii, :]
+                
+                ## Debug
+                (x1, y1, x2, y2) = (x, y, w+x, h+y)
+                # G.filteredROIs.append([x1, y1, x2, y2])
+
+                max_cls_idx = np.argmax(P_cls[0, ii, :])
+                #Every cls has correspongin 4 coords of reg. So we select reg of max cls only from P_regr
+                try:
+                    #Get Regr of only the selected Class using cls_num
+                    (tx, ty, tw, th) = P_regr[0, ii, 4*max_cls_idx:4*(max_cls_idx+1)]
+                    #classifier_regr_std gives the proper scale to apply regr.
+                    tx /= G.classifier_regr_std[0]
+                    ty /= G.classifier_regr_std[1]
+                    tw /= G.classifier_regr_std[2]
+                    th /= G.classifier_regr_std[3]
+                    x, y, w, h = roi_helpers.apply_regr(x, y, w, h, tx, ty, tw, th)
+                except:
+                    pass
+
+                bboxes[cls_name].append([G.rpn_stride*x, G.rpn_stride*y, G.rpn_stride*(x+w), G.rpn_stride*(y+h)])
+                probs[cls_name].append(np.max(P_cls[0, ii, :]))
         
+        G.d_bbox = np.array(bboxes['person'])
+        G.d_prob = np.array(probs['person'])
+
+        #print(len(bboxes))
+        # for key in bboxes:
+        #     bbox_arr = np.array(bboxes[key])
+        #     prob_arr = np.array(probs[key])
+        #     print(key, len(bbox_arr))
+        #     new_boxes, new_probs = roi_helpers.non_max_suppression_fast(bbox_arr,prob_arr,overlap_thresh=0.5)
+        #     for jk in range(new_boxes.shape[0]):
+        #         (x1, y1, x2, y2) = new_boxes[jk,:]
+        #         if key != 'bg':
+        #             G.filteredROIs.append([x1, y1, x2, y2])
+        #             textLabel = '{}: {}'.format(key,int(100*new_probs[jk]))
+
+        # G.filteredROIs = np.array([G.filteredROIs])
+        # G.filteredROIs = np.squeeze(G.filteredROIs, axis=0)
+        # print("filteredROIs ", G.filteredROIs.shape)
+
 def getRpnToRoi(i_start=0, i_end=10, ratios=[], sizes=[]):
     Debug_R = G.ROIs[i_start:i_end,:]
+    Debug_FR = G.filteredROIs
     restart = False
     if len(sizes):
         sizesArr = [int(sizeStr) for sizeStr in sizes]
@@ -186,11 +248,36 @@ def getRpnToRoi(i_start=0, i_end=10, ratios=[], sizes=[]):
         if ratiosArr != G.anchor_ratios_d:
             G.anchor_ratios_d = ratiosArr
             restart = True
-    if restart:
-        print(restart)
-        processRpnToROI(G.debug_img)
-    Debug_R = G.ROIs[i_start:i_end,:]
+    # if restart:
+    #     print(restart)
+    #     processRpnToROI(G.debug_img)
+    #     Debug_R = G.ROIs[i_start:i_end,:]
+    
     #Debug: Display chosen ROIs on the image.
     print("display box")
-    fig = draw_plots.displayBoxes(G.debug_img, rois=Debug_R)
+    fig = draw_plots.displayBoxes(G.debug_img, rois=[], frois=Debug_FR)
     return fig
+
+def getNonmaxSuppression(nonMax_i):
+    print("NonMax ", nonMax_i)
+    # grab the coordinates of the bounding boxes
+    x1 = G.d_bbox[:, 0]
+    y1 = G.d_bbox[:, 1]
+    x2 = G.d_bbox[:, 2]
+    y2 = G.d_bbox[:, 3]
+    # calculate the areas
+    area = (x2 - x1) * (y2 - y1)
+    if nonMax_i == 0:
+        # initialize the list of picked indexes
+        G.picked_idxs = []
+        G.sorted_idxs = np.argsort(G.d_prob)
+
+    last = len(G.sorted_idxs) - 1
+    i = G.sorted_idxs[last]
+    G.picked_idxs.append(i)
+    G.sorted_idxs = np.delete(G.sorted_idxs, [last])
+    print(i, G.sorted_idxs)
+    print(x1[i], y1[i], x2[i], y2[i])
+    fig = draw_plots.showOverlapBoxes(G.debug_img, selectedRect=[x1[i], y1[i], x2[i], y2[i]])
+    return fig
+    

@@ -47,8 +47,6 @@ img2 = None
 
 g.graph = tf.get_default_graph()
 
-num_rois = 32
-
 #Load models and trained weights
 def init():
     model_rpn, model_classifier = frcnn.getCompiledModel()
@@ -176,7 +174,7 @@ def resetImg():
 
 def initTest():
     img = cv2.imread('images/persons.jpg')
-    frcnn.processRpnToROI(img)
+    #frcnn.getNonmaxSuppression()
     #processed_img = process_frcnn(img)
     #cv2.imwrite('result/final_res.png',processed_img)
 
@@ -352,7 +350,7 @@ def processRpnToRoi():
 
 g.model_rpn, g.model_classifier = init()
 processRpnToRoi()
-#initTest()
+initTest()
 
 # sanity check route
 @app.route('/ping', methods=['GET'])
@@ -389,6 +387,13 @@ def rois():
     ratios = data['ratios']
     sizes = data['sizes']
     fig = frcnn.getRpnToRoi(start, end, ratios=ratios, sizes=sizes)
+    return fig
+
+@app.route('/getNonmax', methods=['POST'])
+def nonmax():
+    data = json.loads(request.data)
+    nonMax_i = data["nonMaxIdx"]
+    fig = frcnn.getNonmaxSuppression(nonMax_i)
     return fig
 
 @app.route('/detect', methods=['GET', 'POST'])
