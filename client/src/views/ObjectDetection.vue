@@ -1,10 +1,31 @@
+
 <template>
   <div class="container">
       <div class="header clearfix">
           <h3 class="text-muted">Object Detection Faster RCNN</h3>
       </div>
       <div class="jumbotron">
-        <h3 class="jumbotronHeading">Upload an image</h3>
+        <div class="row">
+          <div class="col-sm">
+            <div class="input-group input-group-sm p-3">
+              <input v-model="start" placeholder="0">
+              <input v-model="end" placeholder="10">
+            </div>
+            <a class="btn btn-success myButton" @click="showMpld3" role="button">Predict</a>
+            <a class="btn btn-primary" @click="clear" id="clearButton" role="button">Clear</a>
+          </div>
+          <div class="col-sm">
+            <span v-for="item in allRatios">
+              <input type="checkbox" :value="item.ratio" v-model="selectedRatios"> <span class="checkbox-label"> {{item.ratio}} </span>
+            </span>
+            <br>
+            <span v-for="item in allSizes">
+              <input type="checkbox" :value="item.size" v-model="selectedSizes"> <span class="checkbox-label"> {{item.size}} </span>
+            </span>
+          </div>
+        </div>
+        <div id="mlpcontainer" style="width:70%; height:400px;"></div>
+        <!-- <h3 class="jumbotronHeading">Upload an image</h3>
         <div class="canvasDiv">
           <picture-input ref="pictureInput" @change="onChange" width="200" height="200" margin="8" accept="image/jpeg,image/png" size="10"
               :removable="true" :customStrings="{
@@ -14,20 +35,9 @@
           </picture-input>
             <br />
             <p style="text-align:center;">
-            <a class="btn btn-success myButton" @click="showMpld3" role="button">Predict</a>
-            <a class="btn btn-primary" @click="clear" id="clearButton" role="button">Clear</a>
+            
             </p>
-        </div>
-      </div>
-      <div class="jumbotron">
-        <p id="result"></p>
-        <div class="slidecontainer">
-          <!-- <p>Drag the slider to change the line width.</p>
-          <input type="range" min="10" max="50" value="15" id="myRange" />
-          <p>Value: <span id="sliderValue"></span></p> -->
-          <img v-if="imageBytes!=''" v-bind:src="'data:image/jpeg;base64,'+imageBytes" />
-          <div id="mlpcontainer" style="width:70%; height:400px;"></div>
-        </div>
+        </div> -->
       </div>
   </div>
 </template>
@@ -47,7 +57,22 @@ export default {
   data() {
       return {
           imageBytes: "",
-          htmlData: "Test"
+          htmlData: "Test",
+          start: 0,
+          end: 10,
+          sizes: [128, 256, 512],
+          allRatios: [
+            { ratio: "1:1" },
+            { ratio: "1:2" },
+            { ratio: "2:1" }
+          ],
+          selectedRatios: [ '1:1' ] ,
+          allSizes: [
+            { size: "128" },
+            { size: "256" },
+            { size: "512" }
+          ],
+          selectedSizes: ["128"]
       }
   },
   components: {
@@ -81,9 +106,11 @@ export default {
       })
     },
     showMpld3() {
-      const path = `http://localhost:5000/query`;
-      var qu = {"plot_type":"bar"};
-      axios.post(path, qu).then(res => {
+      const path = `http://localhost:5000/getRois`;
+      var params = {"start_range":this.start, "end_range":this.end, 
+                    "ratios": this.selectedRatios,
+                    "sizes": this.selectedSizes};
+      axios.post(path, params).then(res => {
         var graph = $("#mlpcontainer");
         graph.html(res.data);
       });

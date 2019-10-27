@@ -7,9 +7,8 @@ import time
 import settings
 import utils
 from matplotlib import pyplot as plt
+import global_vars as G
 
-anchor_box_scales = [128, 256, 512]
-anchor_box_ratios = [[1, 1], [1, 2], [2, 1]]
 rpn_stride = 16
 im_size = 600
 # overlaps for classifier ROIs
@@ -293,37 +292,31 @@ def non_max_suppression_fast(boxes, probs, overlap_thresh=0.9, max_boxes=300):
     probs = probs[picked_idxs]
     return boxes, probs
 
-def rpn_to_roi(rpn_layer, regr_layer, dim_ordering, use_regr=True, max_boxes=300,overlap_thresh=0.9):
+def rpn_to_roi(rpn_layer, regr_layer, dim_ordering, use_regr=True, max_boxes=300,overlap_thresh=0.9, debug=False):
     std_scaling = 4.0
     regr_layer = regr_layer / std_scaling
 
-    anchor_sizes = anchor_box_scales
-    anchor_ratios = anchor_box_ratios
+    if debug:
+        anchor_sizes = G.anchor_scales_d
+        anchor_ratios = G.anchor_ratios_d
+    else:
+        anchor_sizes = G.anchor_box_scales
+        anchor_ratios = G.anchor_box_ratios
 
     assert rpn_layer.shape[0] == 1
 
-    if dim_ordering == 'th':
-        (rows,cols) = rpn_layer.shape[2:]
-
-    elif dim_ordering == 'tf':
-        (rows, cols) = rpn_layer.shape[1:3]
+    (rows, cols) = rpn_layer.shape[1:3]
 
     curr_layer = 0
-    if dim_ordering == 'tf':
-        A = np.zeros((4, rpn_layer.shape[1], rpn_layer.shape[2], rpn_layer.shape[3]))
-    elif dim_ordering == 'th':
-        A = np.zeros((4, rpn_layer.shape[2], rpn_layer.shape[3], rpn_layer.shape[1]))
+    A = np.zeros((4, rpn_layer.shape[1], rpn_layer.shape[2], rpn_layer.shape[3]))
 
     for anchor_size in anchor_sizes:
         for anchor_ratio in anchor_ratios:
 
             anchor_x = (anchor_size * anchor_ratio[0])/rpn_stride
             anchor_y = (anchor_size * anchor_ratio[1])/rpn_stride
-            if dim_ordering == 'th':
-                regr = regr_layer[0, 4 * curr_layer:4 * curr_layer + 4, :, :]
-            else:
-                regr = regr_layer[0, :, :, 4 * curr_layer:4 * curr_layer + 4]
-                regr = np.transpose(regr, (2, 0, 1))
+            regr = regr_layer[0, :, :, 4 * curr_layer:4 * curr_layer + 4]
+            regr = np.transpose(regr, (2, 0, 1))
 
             X, Y = np.meshgrid(np.arange(cols),np. arange(rows))
 

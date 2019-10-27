@@ -43,14 +43,10 @@ app.config.from_object(__name__)
 # enable CORS
 CORS(app, resources={r'/*': {'origins': '*'}})
 
-global model_rpn, model_classifier, graph
-
 img2 = None
 
-graph = tf.get_default_graph()
-im_size = 600
-img_channel_mean = [103.939, 116.779, 123.68]
-img_scaling_factor = 1.0
+g.graph = tf.get_default_graph()
+
 num_rois = 32
 
 #Load models and trained weights
@@ -64,40 +60,6 @@ def convertImage(imgData):
     with open('output.png', 'wb') as output:
         output.write(base64.b64decode(imgstr))
 
-def format_img_size(img):
-    """ formats the image size based on config """
-    img_min_side = float(im_size)
-    (height, width ,_) = img.shape
-
-    if width <= height:
-        ratio = img_min_side/width
-        new_height = int(ratio * height)
-        new_width = int(img_min_side)
-    else:
-        ratio = img_min_side/height
-        new_width = int(ratio * width)
-        new_height = int(img_min_side)
-    img = cv2.resize(img, (new_width, new_height), interpolation=cv2.INTER_CUBIC)
-    return img, ratio
-
-def format_img_channels(img):
-    """ formats the image channels based on config """
-    img = img[:, :, (2, 1, 0)]
-    img = img.astype(np.float32)
-    img[:, :, 0] -= img_channel_mean[0]
-    img[:, :, 1] -= img_channel_mean[1]
-    img[:, :, 2] -= img_channel_mean[2]
-    img /= img_scaling_factor
-    img = np.transpose(img, (2, 0, 1))
-    img = np.expand_dims(img, axis=0)
-    return img
-
-def format_img(img):
-    """ formats an image for model prediction based on config """
-    img, ratio = format_img_size(img)
-    img = format_img_channels(img)
-    return img, ratio
-
 # Method to transform the coordinates of the bounding box to its original size
 def get_real_coordinates(ratio, x1, y1, x2, y2):
     real_x1 = int(round(x1 // ratio))
@@ -107,117 +69,116 @@ def get_real_coordinates(ratio, x1, y1, x2, y2):
 
     return (real_x1, real_y1, real_x2 ,real_y2)
 
-def process_frcnn(img):
-    bbox_threshold = 0.8
+# def process_frcnn(img):
+#     bbox_threshold = 0.8
 
-    g.class_mapping = {v: k for k, v in g.class_mapping.items()}
+#     g.class_mapping = {v: k for k, v in g.class_mapping.items()}
     
-    X, ratio = format_img(img)
+#     X, ratio = format_img(img)
 
-    X = np.transpose(X, (0, 2, 3, 1))
-    with graph.as_default():
-        #Proposes regions on the image X, for all anchor and points on the image, gives a sigmoid class
-        # and a regr value
-        [Y1, Y2, F] = model_rpn.predict(X)
-        #step1(Y1)
+#     X = np.transpose(X, (0, 2, 3, 1))
+#     with graph.as_default():
+#         #Proposes regions on the image X, for all anchor and points on the image, gives a sigmoid class
+#         # and a regr value
+#         [Y1, Y2, F] = model_rpn.predict(X)
+#         #step1(Y1)
 
-        #Select the top 300 RPN and get the ROI (x1,y1,x2,y2) based on overlap threshold.
-        R = roi_helpers.rpn_to_roi(Y1, Y2, K.common.image_dim_ordering(), overlap_thresh=0.7)
-        # convert from (x1,y1,x2,y2) to (x,y,w,h)
-        R[:, 2] -= R[:, 0]
-        R[:, 3] -= R[:, 1]
+#         #Select the top 300 RPN and get the ROI (x1,y1,x2,y2) based on overlap threshold.
+#         R = roi_helpers.rpn_to_roi(Y1, Y2, K.common.image_dim_ordering(), overlap_thresh=0.7)
+#         # convert from (x1,y1,x2,y2) to (x,y,w,h)
+#         R[:, 2] -= R[:, 0]
+#         R[:, 3] -= R[:, 1]
 
-        # apply the spatial pyramid pooling to the proposed regions
-        bboxes = {}
-        probs = {}
-        debug_bboxes1 = []
-        debug_bboxes2 = []
-        #print(R.shape[0]) #300//32 => 9 pools with 32 ROI
-        for jk in range(R.shape[0]//num_rois + 1):
-            ROIs = np.expand_dims(R[num_rois*jk:num_rois*(jk+1), :], axis=0)
-            if ROIs.shape[1] == 0:
-                break
+#         # apply the spatial pyramid pooling to the proposed regions
+#         bboxes = {}
+#         probs = {}
+#         debug_bboxes1 = []
+#         debug_bboxes2 = []
+#         #print(R.shape[0]) #300//32 => 9 pools with 32 ROI
+#         for jk in range(R.shape[0]//num_rois + 1):
+#             ROIs = np.expand_dims(R[num_rois*jk:num_rois*(jk+1), :], axis=0)
+#             if ROIs.shape[1] == 0:
+#                 break
             
-            #If the last pool has less ROIs, just add same ROIs as a padding to proper form the shape
-            if jk == R.shape[0]//num_rois:
-                #pad R
-                curr_shape = ROIs.shape
-                target_shape = (curr_shape[0],num_rois,curr_shape[2])
-                ROIs_padded = np.zeros(target_shape).astype(ROIs.dtype)
-                ROIs_padded[:, :curr_shape[1], :] = ROIs
-                ROIs_padded[0, curr_shape[1]:, :] = ROIs[0, 0, :]
-                ROIs = ROIs_padded
+#             #If the last pool has less ROIs, just add same ROIs as a padding to proper form the shape
+#             if jk == R.shape[0]//num_rois:
+#                 #pad R
+#                 curr_shape = ROIs.shape
+#                 target_shape = (curr_shape[0],num_rois,curr_shape[2])
+#                 ROIs_padded = np.zeros(target_shape).astype(ROIs.dtype)
+#                 ROIs_padded[:, :curr_shape[1], :] = ROIs
+#                 ROIs_padded[0, curr_shape[1]:, :] = ROIs[0, 0, :]
+#                 ROIs = ROIs_padded
 
-            #For 32 ROIs, predict probability (all 21 classes) and regr boxes (matches the class?)
-            #P_regr: 4 coord of Regression for each class (out of 20). 20 classes minus 'bg'
-            [P_cls, P_regr] = model_classifier.predict([F, ROIs])
-            #print(P_cls.shape) #(1,32,21) (1,num_rois, num_classes)
-            #print(P_regr.shape) #(1,32,80) (1,num_rois,4*(num_classes-1))
-            debug_bboxes1 = []
-            debug_bboxes2 = []
-            debug_bboxes3 = []
-            for ii in range(P_cls.shape[1]):
-                if np.max(P_cls[0, ii, :]) < bbox_threshold:
-                    (x, y, w, h) = ROIs[0, ii, :]
-                    debug_bboxes1.append([g.rpn_stride*x, g.rpn_stride*y, g.rpn_stride*(x+w), g.rpn_stride*(y+h)])
-                    continue
-                cls_name = g.class_mapping[np.argmax(P_cls[0, ii, :])]
-                if cls_name not in bboxes:
-                    bboxes[cls_name] = []
-                    probs[cls_name] = []
-                (x, y, w, h) = ROIs[0, ii, :]
-                debug_bboxes2.append([g.rpn_stride*x, g.rpn_stride*y, g.rpn_stride*(x+w), g.rpn_stride*(y+h)])
+#             #For 32 ROIs, predict probability (all 21 classes) and regr boxes (matches the class?)
+#             #P_regr: 4 coord of Regression for each class (out of 20). 20 classes minus 'bg'
+#             [P_cls, P_regr] = model_classifier.predict([F, ROIs])
+#             #print(P_cls.shape) #(1,32,21) (1,num_rois, num_classes)
+#             #print(P_regr.shape) #(1,32,80) (1,num_rois,4*(num_classes-1))
+#             debug_bboxes1 = []
+#             debug_bboxes2 = []
+#             debug_bboxes3 = []
+#             for ii in range(P_cls.shape[1]):
+#                 if np.max(P_cls[0, ii, :]) < bbox_threshold:
+#                     (x, y, w, h) = ROIs[0, ii, :]
+#                     debug_bboxes1.append([g.rpn_stride*x, g.rpn_stride*y, g.rpn_stride*(x+w), g.rpn_stride*(y+h)])
+#                     continue
+#                 cls_name = g.class_mapping[np.argmax(P_cls[0, ii, :])]
+#                 if cls_name not in bboxes:
+#                     bboxes[cls_name] = []
+#                     probs[cls_name] = []
+#                 (x, y, w, h) = ROIs[0, ii, :]
+#                 debug_bboxes2.append([g.rpn_stride*x, g.rpn_stride*y, g.rpn_stride*(x+w), g.rpn_stride*(y+h)])
 
-                max_cls_idx = np.argmax(P_cls[0, ii, :])
-                #Every cls has correspongin 4 coords of reg. So we select reg of max cls only from P_regr
-                try:
-                    #Get Regr of only the selected Class using cls_num
-                    (tx, ty, tw, th) = P_regr[0, ii, 4*max_cls_idx:4*(max_cls_idx+1)]
-                    #classifier_regr_std gives the proper scale to apply regr.
-                    tx /= g.classifier_regr_std[0]
-                    ty /= g.classifier_regr_std[1]
-                    tw /= g.classifier_regr_std[2]
-                    th /= g.classifier_regr_std[3]
-                    x, y, w, h = roi_helpers.apply_regr(x, y, w, h, tx, ty, tw, th)
-                    debug_bboxes3.append([g.rpn_stride*x, g.rpn_stride*y, g.rpn_stride*(x+w), g.rpn_stride*(y+h)])
+#                 max_cls_idx = np.argmax(P_cls[0, ii, :])
+#                 #Every cls has correspongin 4 coords of reg. So we select reg of max cls only from P_regr
+#                 try:
+#                     #Get Regr of only the selected Class using cls_num
+#                     (tx, ty, tw, th) = P_regr[0, ii, 4*max_cls_idx:4*(max_cls_idx+1)]
+#                     #classifier_regr_std gives the proper scale to apply regr.
+#                     tx /= g.classifier_regr_std[0]
+#                     ty /= g.classifier_regr_std[1]
+#                     tw /= g.classifier_regr_std[2]
+#                     th /= g.classifier_regr_std[3]
+#                     x, y, w, h = roi_helpers.apply_regr(x, y, w, h, tx, ty, tw, th)
+#                     debug_bboxes3.append([g.rpn_stride*x, g.rpn_stride*y, g.rpn_stride*(x+w), g.rpn_stride*(y+h)])
 
-                except:
-                    pass
-                bboxes[cls_name].append([g.rpn_stride*x, g.rpn_stride*y, g.rpn_stride*(x+w), g.rpn_stride*(y+h)])
-                probs[cls_name].append(np.max(P_cls[0, ii, :]))
-            #step1(img,jk,debug_bboxes1,debug_bboxes2,debug_bboxes3,ratio)
+#                 except:
+#                     pass
+#                 bboxes[cls_name].append([g.rpn_stride*x, g.rpn_stride*y, g.rpn_stride*(x+w), g.rpn_stride*(y+h)])
+#                 probs[cls_name].append(np.max(P_cls[0, ii, :]))
+#             #step1(img,jk,debug_bboxes1,debug_bboxes2,debug_bboxes3,ratio)
 
-        displayRects = []
-        texts = []
-        for key in bboxes:
-            bbox_arr = np.array(bboxes[key])
-            prob_arr = np.array(probs[key])
-            #step2(img, bbox_arr,prob_arr,key, ratio)
-            new_boxes, new_probs = roi_helpers.non_max_suppression_fast(bbox_arr,prob_arr,overlap_thresh=0.5)
-            for jk in range(new_boxes.shape[0]):
-                (x1, y1, x2, y2) = new_boxes[jk,:]
-                (real_x1, real_y1, real_x2, real_y2) = get_real_coordinates(ratio, x1, y1, x2, y2)
-                textLabel = '{}: {}'.format(key,int(100*new_probs[jk]))
-                #print(textLabel)
-                if key != 'bg':
-                    displayRects.append([real_x1, real_y1, real_x2, real_y2])
-                    texts.append(textLabel)
+#         displayRects = []
+#         texts = []
+#         for key in bboxes:
+#             bbox_arr = np.array(bboxes[key])
+#             prob_arr = np.array(probs[key])
+#             #step2(img, bbox_arr,prob_arr,key, ratio)
+#             new_boxes, new_probs = roi_helpers.non_max_suppression_fast(bbox_arr,prob_arr,overlap_thresh=0.5)
+#             for jk in range(new_boxes.shape[0]):
+#                 (x1, y1, x2, y2) = new_boxes[jk,:]
+#                 (real_x1, real_y1, real_x2, real_y2) = get_real_coordinates(ratio, x1, y1, x2, y2)
+#                 textLabel = '{}: {}'.format(key,int(100*new_probs[jk]))
+#                 #print(textLabel)
+#                 if key != 'bg':
+#                     displayRects.append([real_x1, real_y1, real_x2, real_y2])
+#                     texts.append(textLabel)
                     
-        print("Rects found ", len(displayRects))
-        fig = draw_plots.displayBoxes(img, anchors=displayRects, texts=texts)
-        #processed_img = saveResult(img, anchors=displayRects, texts=texts)
-        #return processed_img
-        return fig
+#         print("Rects found ", len(displayRects))
+#         fig = draw_plots.displayBoxes(img, anchors=displayRects, texts=texts)
+#         #processed_img = saveResult(img, anchors=displayRects, texts=texts)
+#         #return processed_img
+#         return fig
 
 def resetImg():
     img = cv2.imread('images/persons.jpg')
 
 def initTest():
     img = cv2.imread('images/persons.jpg')
-    #make this img global for debugview tasks
-    settings.myDebugList['img'] = img
-    processed_img = process_frcnn(img)
-    cv2.imwrite('result/final_res.png',processed_img)
+    frcnn.processRpnToROI(img)
+    #processed_img = process_frcnn(img)
+    #cv2.imwrite('result/final_res.png',processed_img)
 
 def processImage(img):
     X, ratio = format_img(img)
@@ -384,7 +345,13 @@ def saveResult(img, anchors=[], texts=[]):
         cv2.circle(img, (int((x1+x2)/2), int((y1+y2)/2)), 3, coloraa, -1)
     return img
 
-model_rpn, model_classifier = init()
+def processRpnToRoi():
+    img = cv2.imread('images/persons.jpg')
+    g.debug_img = img
+    frcnn.processRpnToROI(img)
+
+g.model_rpn, g.model_classifier = init()
+processRpnToRoi()
 #initTest()
 
 # sanity check route
@@ -411,8 +378,17 @@ def ping_pong():
 @app.route('/query', methods=['POST'])
 def query():
     img = cv2.imread('images/persons.jpg')
-    fig = process_frcnn(img)
+    #fig = process_frcnn(img)
     data = json.loads(request.data)
+
+@app.route('/getRois', methods=['POST'])
+def rois():
+    data = json.loads(request.data)
+    start = int(data['start_range'])
+    end = int(data['end_range'])
+    ratios = data['ratios']
+    sizes = data['sizes']
+    fig = frcnn.getRpnToRoi(start, end, ratios=ratios, sizes=sizes)
     return fig
 
 @app.route('/detect', methods=['GET', 'POST'])

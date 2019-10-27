@@ -31,21 +31,18 @@ def displayBoxes(img, anchors=[], rois=[], showBox=True, texts=[]):
         if showBox:
             cv2.rectangle(img_copy, (x1, y1), (x2, y2), coloraa, 2)
         cv2.circle(img_copy, (int((x1+x2)/2), int((y1+y2)/2)), 3, coloraa, -1)
-    
+
     for i in range(len(rois)):
         roi = rois[i]
-        x1, y1, x2, y2 = int(roi[0]*g.rpn_stride), int(roi[2]*g.rpn_stride), int(roi[1]*g.rpn_stride), int(roi[3]*g.rpn_stride)
-        #print(x1, y1, x2, y2)
-        cv2.circle(img_copy, (int((x1+x2)/2), int((y1+y2)/2)), 3, coloraa, -1)
+        x1, y1, x2, y2 = int(roi[0]*g.rpn_stride), int(roi[1]*g.rpn_stride), int(roi[2]*g.rpn_stride), int(roi[3]*g.rpn_stride)
+        addRectToImg(img_copy, x1, y1, x2, y2, scaled=True)
     
+    #Debug
+    #cv2.imwrite('result/roi_debug.png',img_copy)
+
     fig, ax = plt.subplots()
     ax.imshow(img_copy)
     return mpld3.fig_to_html(fig)
-    # for i in range(len(regrs)):
-    #     regr = regrs[i]
-    #     cx1, cx2 = int(regr[0]*16), int(regr[1]*16)
-    #     print(cx1, cx2)
-    #     cv2.circle(img, (cx1, cx2), 3, coloraa, -1)
     
     # plt.figure(figsize=(8,8))
     # plt.imshow(img)
@@ -53,7 +50,7 @@ def displayBoxes(img, anchors=[], rois=[], showBox=True, texts=[]):
 
 def addRectToImg(img, x1, y1, x2, y2, scaled=False, color=(255,0,0), thickness=1):
     if scaled:
-        ratio = settings.myDebugList['ratio']
+        ratio = g.ratio
         (x1, y1, x2, y2) = get_real_coordinates(ratio, x1, y1, x2, y2)
 
     #coloraa = (255, 0, 0)
