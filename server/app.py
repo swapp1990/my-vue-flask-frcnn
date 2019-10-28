@@ -178,16 +178,6 @@ def initTest():
     #processed_img = process_frcnn(img)
     #cv2.imwrite('result/final_res.png',processed_img)
 
-def processImage(img):
-    X, ratio = format_img(img)
-    settings.myDebugList['ratio'] = ratio
-
-def detectAndSave(img):
-    processed_img = process_frcnn(img)
-    cv2.waitKey(0)
-    cv2.imwrite('result/cv2.png',processed_img)
-    print("Image saved")
-
 def showFilterDebug(bbox_arr, left_idxs, picked_idxs, filtered_idxs, img, key, ratio):
     img_copy = img.copy()
     x1 = bbox_arr[:, 0]
@@ -323,14 +313,6 @@ def save_images(img, bbox_arr, probs_arr, key, ratio, f_prefix):
     #plt.show()
     cv2.imwrite(str('result/'+filename),img_copy)
     print('Image saved ', filename)
-
-def addRectToImg(img, x1, y1, x2, y2, scaled=False, color=(255,0,0), thickness=1):
-    if scaled:
-        (x1, y1, x2, y2) = get_real_coordinates(2.0, x1, y1, x2, y2)
-
-    #coloraa = (255, 0, 0)
-    cv2.circle(img, (int((x1+x2)/2), int((y1+y2)/2)), 3, color, 1)
-    cv2.rectangle(img, (x1, y1), (x2, y2), color, thickness)
     
 def saveResult(img, anchors=[], texts=[]):
     coloraa = (255, 0, 0)
@@ -386,7 +368,8 @@ def rois():
     end = int(data['end_range'])
     ratios = data['ratios']
     sizes = data['sizes']
-    fig = frcnn.getRpnToRoi(start, end, ratios=ratios, sizes=sizes)
+    print(data)
+    fig = frcnn.d_getRpnToRoi(start, end, ratios=ratios, sizes=sizes)
     return fig
 
 @app.route('/getNonmax', methods=['POST'])
@@ -394,6 +377,19 @@ def nonmax():
     data = json.loads(request.data)
     nonMax_i = data["nonMaxIdx"]
     fig = frcnn.getNonmaxSuppression(nonMax_i)
+    return fig
+
+@app.route('/getPyramidPools', methods=['POST'])
+def pyramidPools():
+    data = json.loads(request.data)
+    fig = frcnn.d_getPyramidPools()
+    return fig
+
+@app.route('/getSinglePyramidPool', methods=['POST'])
+def singlePyamidPool():
+    data = json.loads(request.data)
+    pool_i = data["poolIdx"]
+    fig = frcnn.d_getSinglePool(pool_i)
     return fig
 
 @app.route('/detect', methods=['GET', 'POST'])

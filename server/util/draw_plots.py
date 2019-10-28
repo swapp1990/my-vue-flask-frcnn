@@ -18,38 +18,24 @@ def draw_img(img):
     ax.imshow(img_copy)
     return mpld3.fig_to_html(fig)
 
-def displayBoxes(img, anchors=[], rois=[], frois=[], showBox=True, texts=[]):
+#scale: Scales coordinates on image if box coord are downscaled by a factor of int value
+def drawBoxes(img, boxes=[], scale=1, showBox=True, texts=[]):
     img_copy = img.copy()
-    colorbb = (0, 255, 0)
-    coloraa = (255, 0, 0)
-    
-    for i in range(len(anchors)):
-        a = anchors[i]
-        txt = texts[i]
-        x1, y1, x2, y2 = int(a[0]), int(a[1]), int(a[2]), int(a[3])
-        cv2.putText(img_copy, txt, (x1, y1+10), cv2.FONT_HERSHEY_SIMPLEX, 0.3, (255, 255, 255), thickness=1, lineType=cv2.LINE_AA) 
-        if showBox:
-            cv2.rectangle(img_copy, (x1, y1), (x2, y2), coloraa, 2)
-        cv2.circle(img_copy, (int((x1+x2)/2), int((y1+y2)/2)), 3, coloraa, -1)
 
-    for i in range(len(rois)):
-        roi = rois[i]
-        x1, y1, x2, y2 = int(roi[0]*g.rpn_stride), int(roi[1]*g.rpn_stride), int(roi[2]*g.rpn_stride), int(roi[3]*g.rpn_stride)
+    for i in range(len(boxes)):
+        box = boxes[i]
+        x1, y1, x2, y2 = int(box[0]*scale), int(box[1]*scale), int(box[2]*scale), int(box[3]*scale)
         addRectToImg(img_copy, x1, y1, x2, y2, scaled=True, color=(0,255,0))
-    for i in range(len(frois)):
-        froi = frois[i]
-        x1, y1, x2, y2 = int(froi[0]), int(froi[1]), int(froi[2]), int(froi[3])
-        addRectToImg(img_copy, x1, y1, x2, y2, scaled=True, color=(0,0,255))
+
     #Debug
-    #cv2.imwrite('result/roi_debug.png',img_copy)
+    # cv2.imwrite('result/roi_debug.png',img_copy)
+    # plt.figure(figsize=(8,8))
+    # plt.imshow(img)
+    # plt.show()
 
     fig, ax = plt.subplots()
     ax.imshow(img_copy)
     return mpld3.fig_to_html(fig)
-    
-    # plt.figure(figsize=(8,8))
-    # plt.imshow(img)
-    # plt.show()
 
 def showOverlapBoxes(img, selectedRect):
     img_copy = img.copy()

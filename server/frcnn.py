@@ -137,7 +137,7 @@ def getCompiledModel():
 def processRpnToROI(img):
     G.class_mapping = {v: k for k, v in G.class_mapping.items()}
     G.filteredROIs = []
-
+    print(G.class_mapping)
     X, ratio = IP.format_img(img)
     G.ratio = ratio
     X = np.transpose(X, (0, 2, 3, 1))
@@ -147,12 +147,15 @@ def processRpnToROI(img):
         #bbox_regr => (1,37,60,9*4): 4 coord for each anchor point
         #base_layers => (1,37,60,512): 512 is no of output filters at the end of chosen CNN layers.
         [cls_sigmoid, bbox_regr, base_layers] = G.model_rpn.predict(X)
-        
+
+        #Debug
+        (G.cls_sigmoid, G.bbox_regr, G.base_layers) = (cls_sigmoid, bbox_regr, base_layers)
+
         #Select the proper top 300 from all RPN values and get the ROI (x1,y1,x2,y2) based on overlap threshold.
         #R => (300, 4): 300 * (x1,y1,x2,y2)
         R = roi_helpers.rpn_to_roi(cls_sigmoid, bbox_regr, K.common.image_dim_ordering(), overlap_thresh=0.7, debug=False)
         G.ROIs = R
-        print("ROIs ", G.ROIs.shape)
+        print("Original ROIs ", G.ROIs.shape)
 
         # convert from (x1,y1,x2,y2) to (x,y,w,h)
         R[:, 2] -= R[:, 0]
@@ -181,17 +184,14 @@ def processRpnToROI(img):
             for ii in range(P_cls.shape[1]):
                 if np.max(P_cls[0, ii, :]) < G.bbox_threshold:
                     continue
-                cls_name = G.class_mapping[np.argmax(P_cls[0, ii, :])]
+                max_cls_idx = np.argmax(P_cls[0, ii, :])
+                #print(G.class_mapping[max_cls_idx])
+                cls_name = G.class_mapping[max_cls_idx]
                 if cls_name not in bboxes:
                     bboxes[cls_name] = []
                     probs[cls_name] = []
                 (x, y, w, h) = pyramid_ROIs[0, ii, :]
-                
-                ## Debug
-                (x1, y1, x2, y2) = (x, y, w+x, h+y)
-                # G.filteredROIs.append([x1, y1, x2, y2])
 
-                max_cls_idx = np.argmax(P_cls[0, ii, :])
                 #Every cls has correspongin 4 coords of reg. So we select reg of max cls only from P_regr
                 try:
                     #Get Regr of only the selected Class using cls_num
@@ -204,12 +204,16 @@ def processRpnToROI(img):
                     x, y, w, h = roi_helpers.apply_regr(x, y, w, h, tx, ty, tw, th)
                 except:
                     pass
+                       
+                ## Debug
+                (x1, y1, x2, y2) = (x, y, w+x, h+y)
+                G.tot_SPPs.append([x1, y1, x2, y2])
 
                 bboxes[cls_name].append([G.rpn_stride*x, G.rpn_stride*y, G.rpn_stride*(x+w), G.rpn_stride*(y+h)])
                 probs[cls_name].append(np.max(P_cls[0, ii, :]))
         
-        G.d_bbox = np.array(bboxes['person'])
-        G.d_prob = np.array(probs['person'])
+        #G.d_bbox = np.array(bboxes['person'])
+        #G.d_prob = np.array(probs['person'])
 
         #print(len(bboxes))
         # for key in bboxes:
@@ -223,13 +227,54 @@ def processRpnToROI(img):
         #             G.filteredROIs.append([x1, y1, x2, y2])
         #             textLabel = '{}: {}'.format(key,int(100*new_probs[jk]))
 
-        # G.filteredROIs = np.array([G.filteredROIs])
-        # G.filteredROIs = np.squeeze(G.filteredROIs, axis=0)
-        # print("filteredROIs ", G.filteredROIs.shape)
+        G.tot_SPPs = np.array([G.tot_SPPs])
+        G.tot_SPPs = np.squeeze(G.tot_SPPs, axis=0)
+        print("filteredROIs ", G.tot_SPPs.shape)
 
-def getRpnToRoi(i_start=0, i_end=10, ratios=[], sizes=[]):
+################################ DEBUG VIZ Funcs ######################################################
+#Get filtered RPNs based on input for UI Debug Viz
+def d_resetFilteredRpns():
+    #If debug=True, the algo returns max 300 RPNs just like original, but this time filtered by options
+    R = roi_helpers.rpn_to_roi(G.cls_sigmoid, G.bbox_regr, K.common.image_dim_ordering(), overlap_thresh=0.7, debug=True)
+    G.ROIs = R
+    print("Filtered ROIs ", G.ROIs.shape)
+
+def d_getSinglePyramid(pool_i):
+    #If debug=True, the algo returns max 300 RPNs just like original, but this time filtered by options
+    R = roi_helpers.rpn_to_roi(G.cls_sigmoid, G.bbox_regr, K.common.image_dim_ordering(), overlap_thresh=0.7, debug=False)
+    # convert from (x1,y1,x2,y2) to (x,y,w,h)
+    R[:, 2] -= R[:, 0]
+    R[:, 3] -= R[:, 1]
+
+    singlePool = []
+    jk = pool_i
+
+    pyramid_ROIs = np.expand_dims(R[G.num_rois*jk:G.num_rois*(jk+1), :], axis=0)
+    if jk == R.shape[0]//G.num_rois:
+        #pad R
+        curr_shape = pyramid_ROIs.shape
+        target_shape = (curr_shape[0],G.num_rois,curr_shape[2])
+        ROIs_padded = np.zeros(target_shape).astype(pyramid_ROIs.dtype)
+        ROIs_padded[:, :curr_shape[1], :] = pyramid_ROIs
+        ROIs_padded[0, curr_shape[1]:, :] = pyramid_ROIs[0, 0, :]
+        pyramid_ROIs = ROIs_padded
+
+    [P_cls, P_regr] = G.model_classifier.predict([G.base_layers, pyramid_ROIs])
+    for ii in range(P_cls.shape[1]):
+        if np.max(P_cls[0, ii, :]) < G.bbox_threshold:
+            continue
+        (x, y, w, h) = pyramid_ROIs[0, ii, :]
+        ## Debug
+        (x1, y1, x2, y2) = (x, y, w+x, h+y)
+        singlePool.append([x1, y1, x2, y2])
+    
+    singlePool = np.array([singlePool])
+    singlePool = np.squeeze(singlePool, axis=0)
+    print(jk, "-, singlePool ", singlePool.shape)
+    return singlePool
+
+def d_getRpnToRoi(i_start=0, i_end=10, ratios=[], sizes=[]):
     Debug_R = G.ROIs[i_start:i_end,:]
-    Debug_FR = G.filteredROIs
     restart = False
     if len(sizes):
         sizesArr = [int(sizeStr) for sizeStr in sizes]
@@ -248,14 +293,24 @@ def getRpnToRoi(i_start=0, i_end=10, ratios=[], sizes=[]):
         if ratiosArr != G.anchor_ratios_d:
             G.anchor_ratios_d = ratiosArr
             restart = True
-    # if restart:
-    #     print(restart)
-    #     processRpnToROI(G.debug_img)
-    #     Debug_R = G.ROIs[i_start:i_end,:]
+    if restart:
+        print("re get rpns")
+        d_resetFilteredRpns()
+        Debug_R = G.ROIs[i_start:i_end,:]
     
     #Debug: Display chosen ROIs on the image.
     print("display box")
-    fig = draw_plots.displayBoxes(G.debug_img, rois=[], frois=Debug_FR)
+    fig = draw_plots.drawBoxes(G.debug_img, boxes=Debug_R, scale=G.rpn_stride)
+    return fig
+
+def d_getPyramidPools():
+    Debug_P = G.tot_SPPs
+    fig = draw_plots.drawBoxes(G.debug_img, boxes=Debug_P, scale=G.rpn_stride)
+    return fig
+
+def d_getSinglePool(pool_i):
+    Debug_SP = d_getSinglePyramid(pool_i)
+    fig = draw_plots.drawBoxes(G.debug_img, boxes=Debug_SP, scale=G.rpn_stride)
     return fig
 
 def getNonmaxSuppression(nonMax_i):

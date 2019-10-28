@@ -27,14 +27,18 @@ num_rois = 32
 
 #Objects
 global model_rpn, model_classifier, graph
-global ROIs, filteredROIs
+global ROIs
 
 #Debug
 global debug_img
 global anchor_scales_d, anchor_ratios_d
+global cls_sigmoid, bbox_regr, base_layers
 global d_bbox, d_prob
 global bbox_threshold
 global picked_idxs, sorted_idxs
-anchor_scales_d = [128]
-anchor_ratios_d = [[1, 1]]
+anchor_scales_d = []
+anchor_ratios_d = []
 bbox_threshold = 0.7
+
+global tot_SPPs
+tot_SPPs = []
