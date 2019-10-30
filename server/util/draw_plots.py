@@ -37,20 +37,31 @@ def drawBoxes(img, boxes=[], scale=1, showBox=True, texts=[]):
     ax.imshow(img_copy)
     return mpld3.fig_to_html(fig)
 
-def showOverlapBoxes(img, selectedRect):
+def showOverlapBoxes(img, selectedRect=None, selectedTxt="", overlapBoxes=[], overlapTexts=[], color=(255,255,0)):
     img_copy = img.copy()
-    x1, y1, x2, y2 = int(selectedRect[0]), int(selectedRect[1]), int(selectedRect[2]), int(selectedRect[3])
-    addRectToImg(img_copy, x1, y1, x2, y2, scaled=True)
+    if selectedRect != None:
+        x1, y1, x2, y2 = int(selectedRect[0]), int(selectedRect[1]), int(selectedRect[2]), int(selectedRect[3])
+        addRectToImg(img_copy, x1, y1, x2, y2, scaled=True, txt=selectedTxt, thickness=2)
+    for i in range(len(overlapBoxes)):
+        box = overlapBoxes[i]
+        x1, y1, x2, y2 = int(box[0]), int(box[1]), int(box[2]), int(box[3])
+        txt = ""
+        if len(overlapTexts) > 0:
+            txt = overlapTexts[i]
+        addRectToImg(img_copy, x1, y1, x2, y2, scaled=True, color=color, txt=txt)
+
     fig, ax = plt.subplots()
     ax.imshow(img_copy)
     return mpld3.fig_to_html(fig)
 
-def addRectToImg(img, x1, y1, x2, y2, scaled=False, color=(255,0,0), thickness=1):
+def addRectToImg(img, x1, y1, x2, y2, scaled=False, color=(255,0,0), thickness=1, txt=""):
     if scaled:
         ratio = g.ratio
         (x1, y1, x2, y2) = get_real_coordinates(ratio, x1, y1, x2, y2)
 
     #coloraa = (255, 0, 0)
+    if txt!="":
+        cv2.putText(img, txt, (x1, y1+(y2-y1)), cv2.FONT_HERSHEY_SIMPLEX, 0.3, (255, 255, 255), thickness=1, lineType=cv2.LINE_AA)
     cv2.circle(img, (int((x1+x2)/2), int((y1+y2)/2)), 3, color, 1)
     cv2.rectangle(img, (x1, y1), (x2, y2), color, thickness)
 

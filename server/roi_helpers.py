@@ -275,7 +275,7 @@ def non_max_suppression_fast(boxes, probs, overlap_thresh=0.9, max_boxes=300):
         delete_idxs = np.concatenate(([last], filter_idxs))
         sorted_idxs = np.delete(sorted_idxs, delete_idxs)
 
-        filter_idxs = np.where(overlap_arr > 0.9)[0]
+        #filter_idxs = np.where(overlap_arr > 0.9)[0]
         #Debug Steps to capture
         # stepsToCapture = [1,5,50,150,290,300]
         # if len(picked_idxs) in stepsToCapture:

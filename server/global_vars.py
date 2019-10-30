@@ -36,6 +36,13 @@ global cls_sigmoid, bbox_regr, base_layers
 global d_bbox, d_prob
 global bbox_threshold
 global picked_idxs, sorted_idxs
+picked_idxs = []
+#nonmax
+#For given current nonmax step
+global selectedBox, selectedTxt, allBoxes, allTexts, overlapBoxes, pickedBoxes
+global singleNonOverlaps
+singleNonOverlaps = []
+
 anchor_scales_d = []
 anchor_ratios_d = []
 bbox_threshold = 0.7

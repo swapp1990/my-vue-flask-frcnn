@@ -58,6 +58,35 @@
           <div id="mlpcontainer2" style="width:70%; height:400px;"></div>
         </div>
       </div>
+      <!-- Container: NonMaxSupression -->
+      <div class="container">
+        <div class="row">
+          <div class="col-md-12">
+            <h3>Non Max Suppression</h3>
+            <p>Explain NonMaxSupression</p>
+          </div>
+        </div>
+      </div>
+      <!-- Demo: NonMaxSupression -->
+      <div class="row">
+        <!-- Code -->
+        <div class="col-md-6">
+          <pre> {{nms_code}} </pre>
+        </div>
+        <!-- Viz -->
+        <div class="col-md-6">
+          <div class="row">
+            <div class="col-md-6">
+              <a class="btn btn-success myButton" @click="showNonMax" role="button">Show All</a>
+              <a class="btn btn-success myButton" @click="showSomeOverlap" role="button">Show Overlaps</a>
+              <!-- <a class="btn btn-success myButton" @click="showSinglePyramidPool" role="button">Show Single</a> -->
+            </div>
+          </div>
+          <div id="mlp_fig2_1" style="width:50%; height:300px;"></div>
+          <div id="mlp_fig2_2" style="width:50%; height:300px;"></div>
+          <div id="mlp_fig2_3" style="width:50%; height:300px;"></div>
+        </div>
+      </div>
       <!-- Container: PyramidPooling -->
       <div class="container">
         <div class="row">
@@ -93,6 +122,8 @@
 import PictureInput from 'vue-picture-input'
 import axios from 'axios';
 import $ from 'jquery'
+import * as code_txts from './code_text.js';
+
 export default {
   name: "ObjDet",
   mounted() {
@@ -107,86 +138,9 @@ export default {
           egcode1: `
           X = np.transpose(X, (0, 2, 3, 1))
           [cls_sigmoid, bbox_regr, base_layers] = model_rpn.predict(X)`,
-          egcode2: 
-`def rpn_to_roi(rpn_layer, regr_layer, dim_ordering, use_regr=True, max_boxes=300,overlap_thresh=0.9, debug=False):
-    regr_layer = regr_layer / std_scaling
-
-    (rows, cols) = rpn_layer.shape[1:3]
-
-    curr_layer = 0
-    A = np.zeros((4, rpn_layer.shape[1], rpn_layer.shape[2], rpn_layer.shape[3]))
-
-    for anchor_size in anchor_sizes:
-        for anchor_ratio in anchor_ratios:
-            anchor_x = (anchor_size * anchor_ratio[0])/rpn_stride
-            anchor_y = (anchor_size * anchor_ratio[1])/rpn_stride
-            regr = regr_layer[0, :, :, 4 * curr_layer:4 * curr_layer + 4]
-            regr = np.transpose(regr, (2, 0, 1))
-
-            X, Y = np.meshgrid(np.arange(cols),np. arange(rows))
-
-            A[0, :, :, curr_layer] = X - anchor_x/2
-            A[1, :, :, curr_layer] = Y - anchor_y/2
-            A[2, :, :, curr_layer] = anchor_x
-            A[3, :, :, curr_layer] = anchor_y
-
-            if use_regr:
-                A[:, :, :, curr_layer] = apply_regr_np(A[:, :, :, curr_layer], regr)
-
-            A[2, :, :, curr_layer] = np.maximum(1, A[2, :, :, curr_layer])
-            A[3, :, :, curr_layer] = np.maximum(1, A[3, :, :, curr_layer])
-            A[2, :, :, curr_layer] += A[0, :, :, curr_layer]
-            A[3, :, :, curr_layer] += A[1, :, :, curr_layer]
-
-            A[0, :, :, curr_layer] = np.maximum(0, A[0, :, :, curr_layer])
-            A[1, :, :, curr_layer] = np.maximum(0, A[1, :, :, curr_layer])
-            A[2, :, :, curr_layer] = np.minimum(cols-1, A[2, :, :, curr_layer])
-            A[3, :, :, curr_layer] = np.minimum(rows-1, A[3, :, :, curr_layer])
-
-            curr_layer += 1
-
-    all_boxes = np.reshape(A.transpose((0, 3, 1,2)), (4, -1)).transpose((1, 0))
-    all_probs = rpn_layer.transpose((0, 3, 1, 2)).reshape((-1))
-
-    x1 = all_boxes[:, 0]
-    y1 = all_boxes[:, 1]
-    x2 = all_boxes[:, 2]
-    y2 = all_boxes[:, 3]
-
-    idxs = np.where((x1 - x2 >= 0) | (y1 - y2 >= 0))
-
-    all_boxes = np.delete(all_boxes, idxs, 0)
-    all_probs = np.delete(all_probs, idxs, 0)
-
-    #return top 300 bboxes
-    result = non_max_suppression_fast(all_boxes, all_probs, overlap_thresh=overlap_thresh, max_boxes=max_boxes)[0]
-
-    return result`,
-          egcode3: `
-  for jk in range(R.shape[0]//num_rois + 1):
-    pyramid_ROIs = np.expand_dims(R[num_rois*jk:num_rois*(jk+1), :], axis=0)
-    if pyramid_ROIs.shape[1] == 0:
-        break
-
-    if jk == R.shape[0]//num_rois:
-        continue
-
-    [P_cls, P_regr] = model_classifier.predict([base_layers, pyramid_ROIs])
-    for ii in range(P_cls.shape[1]):
-      if np.max(P_cls[0, ii, :]) < G.bbox_threshold:
-        continue
-      max_cls_idx = np.argmax(P_cls[0, ii, :])
-      (x, y, w, h) = pyramid_ROIs[0, ii, :]
-
-      (tx, ty, tw, th) = P_regr[0, ii, 4*max_cls_idx:4*(max_cls_idx+1)]
-      tx /= G.classifier_regr_std[0]
-      ty /= G.classifier_regr_std[1]
-      tw /= G.classifier_regr_std[2]
-      th /= G.classifier_regr_std[3]
-      x, y, w, h = roi_helpers.apply_regr(x, y, w, h, tx, ty, tw, th)
-
-      (x1, y1, x2, y2) = (x, y, w+x, h+y)
-      `,
+          egcode2: code_txts.rpnTpRoi_code,
+          egcode3: code_txts.SPP_code,
+          nms_code: code_txts.NMS_code,
           htmlData: "Test",
           start: 0,
           end: 10,
@@ -204,7 +158,8 @@ export default {
           ],
           selectedSizes: ["128"],
           nonMaxIdx: 0,
-          poolIdx: 0
+          poolIdx: 0,
+          overlapIdx: 0
       }
   },
   components: {
@@ -277,14 +232,33 @@ export default {
         console.log(error)
       })
     },
-    showMpld3() {
+    showNonMax() {
       const path = `http://localhost:5000/getNonmax`;
       
       var params = {"nonMaxIdx": this.nonMaxIdx}
       axios.post(path, params).then(res => {
-        var graph = $("#mlpcontainer");
-        graph.html(res.data);
+        var mlp_figs = res.data
+        var graph1 = $("#mlp_fig2_1");
+        graph1.html(mlp_figs[0]);
+        var graph2 = $("#mlp_fig2_2");
+        graph2.html(mlp_figs[1]);
+        var graph3 = $("#mlp_fig2_3");
+        graph3.html(mlp_figs[2]);
         this.nonMaxIdx++;
+        this.overlapIdx = 0;
+      });
+
+    },
+    showSomeOverlap() {
+      const path = `http://localhost:5000/getOverlap`;
+      var params = {"overlapIdx": this.overlapIdx}
+      axios.post(path, params).then(res => {
+        var mlp_figs = res.data
+        var graph1 = $("#mlp_fig2_1");
+        graph1.html(mlp_figs[0]);
+        var graph2 = $("#mlp_fig2_2");
+        graph2.html(mlp_figs[1]);
+        this.overlapIdx++;
       });
     },
     clear() {

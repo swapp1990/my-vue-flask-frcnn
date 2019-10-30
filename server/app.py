@@ -16,6 +16,7 @@ import random
 
 from flask import Flask, jsonify, request
 from flask_cors import CORS
+from flask import Response
 
 from keras.models import model_from_json
 from keras import backend as K
@@ -168,9 +169,6 @@ def get_real_coordinates(ratio, x1, y1, x2, y2):
 #         #processed_img = saveResult(img, anchors=displayRects, texts=texts)
 #         #return processed_img
 #         return fig
-
-def resetImg():
-    img = cv2.imread('images/persons.jpg')
 
 def initTest():
     img = cv2.imread('images/persons.jpg')
@@ -376,8 +374,15 @@ def rois():
 def nonmax():
     data = json.loads(request.data)
     nonMax_i = data["nonMaxIdx"]
-    fig = frcnn.getNonmaxSuppression(nonMax_i)
-    return fig
+    figs = frcnn.d_getNonmaxSuppression(nonMax_i)
+    return Response(json.dumps(figs),  mimetype='application/json')
+
+@app.route('/getOverlap', methods=['POST'])
+def overlap():
+    data = json.loads(request.data)
+    overlap_i = data["overlapIdx"]
+    figs = frcnn.d_getNonmaxOverlaps(overlap_i)
+    return Response(json.dumps(figs),  mimetype='application/json')
 
 @app.route('/getPyramidPools', methods=['POST'])
 def pyramidPools():

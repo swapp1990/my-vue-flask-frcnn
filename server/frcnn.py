@@ -212,8 +212,8 @@ def processRpnToROI(img):
                 bboxes[cls_name].append([G.rpn_stride*x, G.rpn_stride*y, G.rpn_stride*(x+w), G.rpn_stride*(y+h)])
                 probs[cls_name].append(np.max(P_cls[0, ii, :]))
         
-        #G.d_bbox = np.array(bboxes['person'])
-        #G.d_prob = np.array(probs['person'])
+        G.d_bbox = np.array(bboxes['person'])
+        G.d_prob = np.array(probs['person'])
 
         #print(len(bboxes))
         # for key in bboxes:
@@ -313,26 +313,119 @@ def d_getSinglePool(pool_i):
     fig = draw_plots.drawBoxes(G.debug_img, boxes=Debug_SP, scale=G.rpn_stride)
     return fig
 
-def getNonmaxSuppression(nonMax_i):
-    print("NonMax ", nonMax_i)
+def setCurrNonmax():
     # grab the coordinates of the bounding boxes
     x1 = G.d_bbox[:, 0]
     y1 = G.d_bbox[:, 1]
     x2 = G.d_bbox[:, 2]
     y2 = G.d_bbox[:, 3]
-    # calculate the areas
-    area = (x2 - x1) * (y2 - y1)
-    if nonMax_i == 0:
-        # initialize the list of picked indexes
-        G.picked_idxs = []
-        G.sorted_idxs = np.argsort(G.d_prob)
-
+    area_arr = (x2 - x1) * (y2 - y1)
     last = len(G.sorted_idxs) - 1
-    i = G.sorted_idxs[last]
-    G.picked_idxs.append(i)
-    G.sorted_idxs = np.delete(G.sorted_idxs, [last])
-    print(i, G.sorted_idxs)
-    print(x1[i], y1[i], x2[i], y2[i])
-    fig = draw_plots.showOverlapBoxes(G.debug_img, selectedRect=[x1[i], y1[i], x2[i], y2[i]])
-    return fig
+    selected_idx = G.sorted_idxs[last]
+    G.picked_idxs.append(selected_idx)
+    #print(selected_idx, G.sorted_idxs, G.d_prob[selected_idx])
+    probStr = "{0:.2f}".format(G.d_prob[selected_idx])
+
+    G.selectedBox = [x1[selected_idx], y1[selected_idx], x2[selected_idx], y2[selected_idx]]
+    G.selectedTxt = 'Prob: {}'.format(probStr)
+
+    #Calculate overlap values of selected Box with every other box
+    sorted_idxs = G.sorted_idxs
+    xx1_int = np.maximum(x1[selected_idx], x1[sorted_idxs[:last]])
+    yy1_int = np.maximum(y1[selected_idx], y1[sorted_idxs[:last]])
+    xx2_int = np.minimum(x2[selected_idx], x2[sorted_idxs[:last]])
+    yy2_int = np.minimum(y2[selected_idx], y2[sorted_idxs[:last]])
+    ww_int = np.maximum(0, xx2_int - xx1_int)
+    hh_int = np.maximum(0, yy2_int - yy1_int)
+    area_int = ww_int * hh_int
+    area_union = area_arr[selected_idx] + area_arr[sorted_idxs[:last]] - area_int
+    overlap_arr = area_int/(area_union + 1e-6)
+
+    overlapRects = []
+    overlapTexts = []
+    for i in range(len(overlap_arr)):
+        si = G.sorted_idxs[i]
+        currRect = [x1[si], y1[si], x2[si], y2[si]]
+        overlapRects.append(currRect)
+        probStr = "{0:.2f}".format(G.d_prob[si])
+        overlapStr = "{0:.2f}".format(overlap_arr[i])
+        textLabel = '{}'.format(overlapStr)
+        overlapTexts.append(textLabel)
+    overlapRects = np.array([overlapRects])
+    overlapRects = np.squeeze(overlapRects, axis=0)
+    print("overlapRects ", overlapRects.shape)
+
+    pickedBoxes = []
+    for i in range(len(G.picked_idxs)):
+        currRect = [x1[i], y1[i], x2[i], y2[i]]
+        pickedBoxes.append(currRect)
+    pickedBoxes = np.array([pickedBoxes])
+    pickedBoxes = np.squeeze(pickedBoxes, axis=0)
+
+    #Set Globals
+    G.allBoxes = overlapRects
+    G.allTexts = overlapTexts
+    G.pickedBoxes = pickedBoxes
+    #G.sorted_idxs = np.delete(G.sorted_idxs, [last])
+
+    #Final NonMax Result
+    overlap_thresh = 0.5
+    #Filter overlapping boxes and remove them including selected box (last) from sorted_idxs
+    filter_idxs = np.where(overlap_arr > overlap_thresh)[0]
+    #print(overlap_arr, filter_idxs)
+    #~~~~~~~~~~~~~~~~~~~~~~~~
+    overlapRects = []
+    overlapTexts = []
+    #filter_idxs gives all indexes of overlap array which are deleted.
+    #convert this overlap arr index to it's sorted_idxs
+    for fi in range(len(filter_idxs)):
+        oi = filter_idxs[fi]
+        si = G.sorted_idxs[oi]
+        currRect = [x1[si], y1[si], x2[si], y2[si]]
+        overlapRects.append(currRect)
+    overlapRects = np.array([overlapRects])
+    overlapRects = np.squeeze(overlapRects, axis=0)
+    print("Remove ", overlapRects.shape[0])
+    #Set Globals
+    G.overlapBoxes = overlapRects
+
+    #delete all indexes from the index list that have
+    delete_idxs = np.concatenate(([last], filter_idxs))
+    G.sorted_idxs = np.delete(G.sorted_idxs, delete_idxs)
+    print("Left ", len(G.sorted_idxs))
+
+def d_getNonmaxSuppression(nonMax_i):
+    print("NonMax ", nonMax_i)
+    if nonMax_i == 0:
+        G.sorted_idxs = np.argsort(G.d_prob)
+        G.picked_idxs = []
+        G.singleNonOverlaps = []
     
+    setCurrNonmax()
+
+    fig = draw_plots.showOverlapBoxes(G.debug_img, selectedRect=G.selectedBox, selectedTxt=G.selectedTxt, overlapBoxes=G.allBoxes, overlapTexts=G.allTexts)
+
+    fig2 = draw_plots.showOverlapBoxes(G.debug_img, selectedRect=G.selectedBox, selectedTxt=G.selectedTxt, overlapBoxes=G.overlapBoxes, overlapTexts=[], color=(255,0,0))
+    
+    fig3 = draw_plots.showOverlapBoxes(G.debug_img, overlapBoxes=G.pickedBoxes, color=(0,255,0))
+    
+    return [fig, fig2, fig3]
+
+def d_getNonmaxOverlaps(overlap_i):
+    fil_overlap_boxes = [G.allBoxes[overlap_i]]
+    fil_overlap_txts = [G.allTexts[overlap_i]]
+    common = (fil_overlap_boxes == G.overlapBoxes).all(1).any()
+    overlapColor = (255,255,0)
+    if common:
+        overlapColor = (255,0,0)
+    fig = draw_plots.showOverlapBoxes(G.debug_img, selectedRect=G.selectedBox, selectedTxt=G.selectedTxt, overlapBoxes=fil_overlap_boxes, overlapTexts=fil_overlap_txts, color=overlapColor)
+    #Show all non overlap boxes
+    if not common:
+        G.singleNonOverlaps.append(G.allBoxes[overlap_i])
+
+    newBoxes = G.singleNonOverlaps.copy()
+    newBoxes = np.array([newBoxes])
+    newBoxes = np.squeeze(newBoxes, axis=0)
+    fig2 = draw_plots.showOverlapBoxes(G.debug_img, overlapBoxes=newBoxes)
+
+    return [fig, fig2]
