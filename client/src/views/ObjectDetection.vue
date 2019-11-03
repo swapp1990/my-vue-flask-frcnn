@@ -114,6 +114,33 @@
           <div id="mlp_fig3_1" style="width:70%; height:400px;"></div>
         </div>
       </div>
+      <!-- Container: Classification Prediction -->
+      <div class="container">
+        <div class="row">
+          <div class="col-md-12">
+            <h3>Classification Prediction</h3>
+            <p>Explain Classification Prediction</p>
+          </div>
+        </div>
+      </div>
+      <!-- Demo: Classification Prediction-->
+      <div class="row">
+        <!-- Code -->
+        <div class="col-md-6">
+          <pre> {{classifier_code}} </pre>
+        </div>
+        <!-- Viz -->
+        <div class="col-md-6">
+          <div class="row">
+            <div class="col-md-6">
+              <a class="btn btn-success myButton" @click="showClassification" role="button">Show All</a>
+              <!-- <a class="btn btn-success myButton" @click="showSinglePyramidPool" role="button">Show Single</a> -->
+            </div>
+          </div>
+          <!-- <div id="mlp_fig3_2" style="width:70%; height:400px;"></div> -->
+          <div id="mlp_fig4_1" style="width:70%; height:400px;"></div>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -141,6 +168,7 @@ export default {
           egcode2: code_txts.rpnTpRoi_code,
           egcode3: code_txts.SPP_code,
           nms_code: code_txts.NMS_code,
+          classifier_code: code_txts.Classifier_code,
           htmlData: "Test",
           start: 0,
           end: 10,
@@ -259,6 +287,15 @@ export default {
         var graph2 = $("#mlp_fig2_2");
         graph2.html(mlp_figs[1]);
         this.overlapIdx++;
+      });
+    },
+    showClassification() {
+      const path = `http://localhost:5000/getModelClassifier`;
+      var params = {"nonMaxIdx": 0}
+      axios.post(path, params).then(res => {
+        var mlp_figs = res.data
+        var graph1 = $("#mlp_fig4_1");
+        graph1.html(mlp_figs[0]);
       });
     },
     clear() {

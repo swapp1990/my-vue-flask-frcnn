@@ -397,6 +397,14 @@ def singlePyamidPool():
     fig = frcnn.d_getSinglePool(pool_i)
     return fig
 
+###################### Model ###########################
+@app.route('/getModelClassifier', methods=['POST'])
+def modelClassifier():
+    data = json.loads(request.data)
+    #pool_i = data["poolIdx"]
+    figs = frcnn.d_getClassifierPrediction()
+    return Response(json.dumps(figs),  mimetype='application/json')
+
 @app.route('/detect', methods=['GET', 'POST'])
 def detect():
     if request.method == 'GET':

@@ -151,3 +151,25 @@ def non_max_suppression_fast(boxes, probs, overlap_thresh=0.9, max_boxes=300):
     probs = probs[picked_idxs]
     return boxes, probs
     `
+
+    export const Classifier_code = `
+    def classifier(base_layers, input_rois, num_rois, nb_classes = 21, trainable=False):
+        pooling_regions = 7
+        input_shape = (num_rois, 7, 7, 512)
+
+        #32 rois passed through 7 pooling regions
+        out_roi_pool = RoiPoolingConv(pooling_regions, num_rois)([base_layers, input_rois])
+
+        out = TimeDistributed(Flatten(name='flatten'))(out_roi_pool)
+        out = TimeDistributed(Dense(4096, activation='relu', name='fc1'))(out)
+        out = TimeDistributed(Dropout(0.5))(out)
+        out = TimeDistributed(Dense(4096, activation='relu', name='fc2'))(out)
+        out = TimeDistributed(Dropout(0.5))(out)
+
+        out_class = TimeDistributed(Dense(nb_classes, activation='softmax', kernel_initializer='zero'), name='dense_class_{}'.format(nb_classes))(out)
+        # note: no regression target for bg class
+        #4 values sequential for all 20 classes
+        out_regr = TimeDistributed(Dense(4 * (nb_classes-1), activation='linear', kernel_initializer='zero'), name='dense_regress_{}'.format(nb_classes))(out)
+
+    return [out_class, out_regr]
+    `

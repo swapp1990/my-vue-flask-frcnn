@@ -7,7 +7,7 @@ from optparse import OptionParser
 import time
 from matplotlib import pyplot as plt
 import asyncio
-
+import tensorflow as tf
 from keras.models import Model
 from keras.layers import Flatten, Dense, Input, Conv2D, MaxPooling2D, Dropout
 from keras.layers import GlobalAveragePooling2D, GlobalMaxPooling2D, TimeDistributed
@@ -92,6 +92,39 @@ def classifier(base_layers, input_rois, num_rois, nb_classes = 21, trainable=Fal
 
     return [out_class, out_regr]
 
+def d_getClassifierPrediction():
+    Debug_R = G.ROIs[0:5,:]
+    fig = draw_plots.drawBoxes(G.debug_img, boxes=Debug_R)
+    return [fig]
+    
+# def d_getClassifierPrediction():
+#     R = G.ROIs
+#     print(R.dtype)
+#     #for jk in range(R.shape[0]//G.num_rois + 1):
+#     jk = 0
+#     pyramid_ROIs = np.expand_dims(R[G.num_rois*jk:G.num_rois*(jk+1), :], axis=0)
+#     with G.graph.as_default():
+#         fun = K.function([*G.model_classifier.layers[2].input], [G.model_classifier.layers[2].output])
+#         #print(type(G.base_layers), type(pyramid_ROIs))
+#         #base_layers_tf = np.asarray(G.base_layers, dtype=np.float32)
+#         #pyramid_ROIs_tf = np.asarray(pyramid_ROIs, dtype=np.float32)
+#         base_layers_tf = tf.convert_to_tensor(G.base_layers, np.float32)
+#         pyramid_ROIs_tf = tf.convert_to_tensor(pyramid_ROIs, np.float32)
+#         print(type(base_layers_tf), type(pyramid_ROIs_tf))
+#         inputs = [base_layers_tf, pyramid_ROIs_tf]
+#         #print(type(inputs))
+#         #inputs = np.asarray(inputs, dtype=np.float32)
+#         #print(type(inputs))
+#         roippoolingconv_out = fun(inputs)[0]
+#         #(1,32,7,7,512) - For 32 ROIs returns (7*7) kernel size feature maps (512)
+#         print(roippoolingconv_out.shape)
+#     #convpool_out = 
+#     #G.model_classifier.predict([base_layers, pyramid_ROIs])
+#     #print()
+#     Debug_R = G.ROIs[0:5,:]
+#     fig = draw_plots.drawBoxes(G.debug_img, boxes=Debug_R)
+#     return [fig]
+
 def getBaseLayers():
     class_mapping = {'tvmonitor': 0, 'train': 1, 'person': 2, 'boat': 3, 'horse': 4, 'cow': 5, 'bottle': 6, 'dog': 7, 'aeroplane': 8, 'car': 9, 'bus': 10, 'bicycle': 11, 'chair': 12, 'diningtable': 13, 'pottedplant': 14, 'bird': 15, 'cat': 16, 'motorbike': 17, 'sheep': 18, 'sofa': 19, 'bg': 20}
 
@@ -127,6 +160,8 @@ def getCompiledModel():
     #print(model_rpn.summary())
     model_rpn.load_weights('model/model_frcnn.hdf5', by_name=True)
     model_classifier.load_weights('model/model_frcnn.hdf5', by_name=True)
+    print(model_classifier.summary())
+    print(type(model_classifier.layers[2].input))
     print("Loaded weights")
     return model_rpn, model_classifier
 
@@ -177,6 +212,7 @@ def processRpnToROI(img):
             #For 32 ROIs, predict probability (all 21 classes) and regr boxes (matches the class?)
             #P_regr: 4 coord of Regression for each class (out of 20). 20 classes minus 'bg'
             [P_cls, P_regr] = G.model_classifier.predict([base_layers, pyramid_ROIs])
+
 
             #print(P_cls.shape) #(1,32,21) (1,num_rois, num_classes)
             #print(P_regr.shape) #(1,32,80) (1,num_rois,4*(num_classes-1))
