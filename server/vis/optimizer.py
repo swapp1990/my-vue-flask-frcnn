@@ -24,17 +24,34 @@ class Optimizer(object):
         self.loss_functions = []
         self.loss_names = []
         overall_loss = None
+        self.overall_loss = overall_loss
         for loss, contrib in losses:
             if contrib != 0:
-                 loss_fn = contrib * loss.build_loss()
-                 self.loss_functions.append(loss_fn)
-                 overall_loss = loss_fn if overall_loss is None else overall_loss + loss_fn
-                 self.loss_names.append(loss.name)
-        
+                loss_fn = contrib * loss.build_loss()
+                self.loss_functions.append(loss_fn)
+                overall_loss = loss_fn if overall_loss is None else overall_loss + loss_fn
+                self.loss_names.append(loss.name)
+                self.overall_loss = overall_loss
         if self.wrt_tensor_is_input_tensor:
             grads = K.gradients(overall_loss, self.input_tensor)[0]
         # K.function just glues the inputs to the outputs returning a single operation that when given the inputs it will follow the computation graph from the inputs to the defined outputs. It's symbolic.
         self.compute_fn = K.function([self.input_tensor, K.learning_phase()], self.loss_functions + [overall_loss, grads, self.wrt_tensor])
+
+    def updateLosses(self, input_tensor, losses):
+        print("b overall ", self.overall_loss)
+        self.loss_functions = []
+        self.loss_names = []
+        for loss, contrib in losses:
+            if contrib != 0:
+                 loss_fn = contrib * loss.build_loss()
+                 self.loss_functions.append(loss_fn)
+                 self.overall_loss = self.overall_loss + loss_fn
+                 self.loss_names.append(loss.name)
+
+        grads = K.gradients(self.overall_loss, self.input_tensor)[0]
+
+        self.compute_fn = K.function([self.input_tensor, K.learning_phase()], self.loss_functions + [self.overall_loss, grads, self.wrt_tensor])
+        print("updated compute fn")
 
     def _rmsprop(self, grads, cache=None, decay_rate=0.95):
         if cache is None:
@@ -55,9 +72,12 @@ class Optimizer(object):
     def minimizeSingle(self):
         self.seed_input = self._get_seed_input(self.seed_input)
         computed_values = self.compute_fn([self.seed_input, 0])
-        #losses = computed_values[:len(self.loss_names)]
+        losses = computed_values[:len(self.loss_names)]
+        named_losses = list(zip(self.loss_names, losses))
+        print("named_losses ", named_losses)
         overall_loss, grads, wrt_value = computed_values[len(self.loss_names):]
         print("overall_loss ", overall_loss)
+        self.overall_loss = overall_loss
         if self.wrt_tensor_is_input_tensor:
             step, self.cache = self._rmsprop(grads, self.cache)
             self.seed_input += step
@@ -80,11 +100,10 @@ class Optimizer(object):
             # 0 learning phase for 'test'
             
             computed_values = self.compute_fn([seed_input, 0])
-            #print(computed_values[0]) acm loss
-
             losses = computed_values[:len(self.loss_names)]
             named_losses = list(zip(self.loss_names, losses))
             overall_loss, grads, wrt_value = computed_values[len(self.loss_names):]
+            print("named_losses ", named_losses)
             print("overall_loss ", overall_loss)
             if self.wrt_tensor_is_input_tensor:
                 step, cache = self._rmsprop(grads, cache)

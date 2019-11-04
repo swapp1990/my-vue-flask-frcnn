@@ -21,9 +21,24 @@ socketio = SocketIO(app, cors_allowed_origins="*")
 # enable CORS
 CORS(app, resources={r'/*': {'origins': '*'}}) 
 
-global opt
+global opt, model_imagenet, g_cls_idx
 opt = None
+model_imagenet = None
+g_cls_idx = 20
+
+# def init():
+#     global fig, ax
+
+def testinit():
+    model_imagenet = VGG16(weights='imagenet', include_top=True)
+    layer_idx = viz_utils.find_layer_idx(model_imagenet, 'predictions')
+    model_imagenet.layers[layer_idx].activation = activations.linear
+    model_imagenet = viz_utils.apply_modifications(model_imagenet)
+    img = am.visualize_activation(model_imagenet, layer_idx, class_indices=20)
+
 #init()
+#testinit()
+
 
 @socketio.on('first-connect1')
 def handle_message():
@@ -34,6 +49,7 @@ def handle_message():
 def firstclickRes(class_idx):
     #print('received message: ' + message)
     print('clicked')
+    global model_imagenet, g_cls_idx
     model_imagenet = VGG16(weights='imagenet', include_top=True)
     layer_idx = viz_utils.find_layer_idx(model_imagenet, 'predictions')
     # Swap softmax with linear
@@ -41,21 +57,33 @@ def firstclickRes(class_idx):
     model_imagenet = viz_utils.apply_modifications(model_imagenet)
     global opt
     opt = am.initOptimizer(model_imagenet, layer_idx, class_indices=class_idx)
+    g_cls_idx = class_idx
     emit('optinit')
-    # plt.imshow(img)
-    # plt.show() 
-    #emit('pong')
+
+@socketio.on('reset')
+def reset():
+    print("reset ", g_cls_idx)
+    layer_idx = viz_utils.find_layer_idx(model_imagenet, 'predictions')
+    am.modifyOpt(opt, model_imagenet, layer_idx, class_indices=g_cls_idx, l2_norm=True)
+
+@socketio.on('modify')
+def modify():
+    print("modify ", g_cls_idx)
+    layer_idx = viz_utils.find_layer_idx(model_imagenet, 'predictions')
+    am.modifyOpt(opt, model_imagenet, layer_idx, class_indices=g_cls_idx, l2_norm=False)
 
 @socketio.on('performminimize')
 def performMinimize(step):
     print("performMinimize ", step)
+    #global fig
     if step < 300:
         if opt is not None:
-            img = am.visualize_activation_single(opt)
             fig, ax = plt.subplots()
+            plt.axis('off')
+            img = am.visualize_activation_single(opt)
             ax.imshow(img)
-            fig = mpld3.fig_to_html(fig)
-            emit('gotfig', fig)
+            mp_fig = mpld3.fig_to_html(fig)
+            emit('gotfig', mp_fig)
         else:
             print("opt error")
 

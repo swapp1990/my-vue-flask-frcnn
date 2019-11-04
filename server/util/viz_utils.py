@@ -55,3 +55,36 @@ def deprocess_input(input_array, input_range=(0, 255)):
 
     # Convert to `input_range`
     return (input_range[1] - input_range[0]) * input_array + input_range[0]
+
+def get_img_shape(img):
+    if isinstance(img, np.ndarray):
+        shape = img.shape
+    else:
+        shape = K.int_shape(img)
+
+    if K.image_data_format() == 'channels_last':
+        shape = list(shape)
+        shape.insert(1, shape[-1])
+        shape = tuple(shape[:-1])
+    return shape
+
+class _BackendAgnosticImageSlice(object):
+    """Utility class to make image slicing uniform across various `image_data_format`.
+    """
+
+    def __getitem__(self, item_slice):
+        """Assuming a slice for shape `(samples, channels, image_dims...)`
+        """
+        if K.image_data_format() == 'channels_first':
+            return item_slice
+        else:
+            # Move channel index to last position.
+            item_slice = list(item_slice)
+            item_slice.append(item_slice.pop(1))
+            return tuple(item_slice)
+"""Slice utility to make image slicing uniform across various `image_data_format`.
+Example:
+    conv_layer[utils.slicer[:, filter_idx, :, :]] will work for both `channels_first` and `channels_last` image
+    data formats even though, in tensorflow, slice should be conv_layer[utils.slicer[:, :, :, filter_idx]]
+"""
+slicer = _BackendAgnosticImageSlice()
