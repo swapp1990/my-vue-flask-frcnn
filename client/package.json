@@ -15,7 +15,9 @@
     "jquery": "^3.4.1",
     "vue": "^2.6.10",
     "vue-picture-input": "^2.1.1",
-    "vue-router": "^3.0.3"
+    "vue-router": "^3.0.3",
+    "vue-socket.io": "^3.0.7",
+    "vuex": "^3.1.1"
   },
   "devDependencies": {
     "@vue/cli-plugin-babel": "^3.7.0",
@@ -27,9 +29,7 @@
     "eslint-plugin-vue": "^5.0.0",
     "vue-template-compiler": "^2.5.21"
   },
-  "eslintConfig": {
-
-  },
+  "eslintConfig": {},
   "postcss": {
     "plugins": {
       "autoprefixer": {}

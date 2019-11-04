@@ -4,6 +4,7 @@ import Books from './components/Books.vue';
 import Ping from './components/Ping.vue';
 import DrawMnist from './views/DrawMnist.vue';
 import ObjDet from './views/ObjectDetection.vue';
+import SocketTest from './views/SocketTest.vue';
 
 Vue.use(Router);
 
@@ -13,6 +14,10 @@ export default new Router({
   routes: [
     {
       path: '/',
+      component: SocketTest
+    },
+    {
+      path: '/obj',
       name: 'ObjDet',
       component: ObjDet,
     },

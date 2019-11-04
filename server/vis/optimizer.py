@@ -13,6 +13,10 @@ class Optimizer(object):
         """
         self.input_tensor = input_tensor
         self.input_range = input_range
+        self.seed_input = None
+        self.cache=None
+        self.best_loss = float('inf')
+        self.grads = None
         self.wrt_tensor = self.input_tensor
         if self.input_tensor is self.wrt_tensor:
             self.wrt_tensor_is_input_tensor = True
@@ -20,13 +24,12 @@ class Optimizer(object):
         self.loss_functions = []
         self.loss_names = []
         overall_loss = None
-        for loss, weight in losses:
-            if weight != 0:
-                 loss_fn = weight * loss.build_loss()
+        for loss, contrib in losses:
+            if contrib != 0:
+                 loss_fn = contrib * loss.build_loss()
                  self.loss_functions.append(loss_fn)
                  overall_loss = loss_fn if overall_loss is None else overall_loss + loss_fn
                  self.loss_names.append(loss.name)
-                 print("overall_loss ", overall_loss)
         
         if self.wrt_tensor_is_input_tensor:
             grads = K.gradients(overall_loss, self.input_tensor)[0]
@@ -42,12 +45,29 @@ class Optimizer(object):
 
     def _get_seed_input(self, seed_input):
         """Creates a random seed_input if None """
-        desired_shape = (1, ) + K.int_shape(self.input_tensor)[1:]
         if seed_input is None:
-             return viz_utils.random_array(desired_shape, mean=np.mean(self.input_range),
+            desired_shape = (1, ) + K.int_shape(self.input_tensor)[1:]
+            return viz_utils.random_array(desired_shape, mean=np.mean(self.input_range),
                                       std=0.05 * (self.input_range[1] - self.input_range[0]))
+        else:
+            return seed_input
+    
+    def minimizeSingle(self):
+        self.seed_input = self._get_seed_input(self.seed_input)
+        computed_values = self.compute_fn([self.seed_input, 0])
+        #losses = computed_values[:len(self.loss_names)]
+        overall_loss, grads, wrt_value = computed_values[len(self.loss_names):]
+        print("overall_loss ", overall_loss)
+        if self.wrt_tensor_is_input_tensor:
+            step, self.cache = self._rmsprop(grads, self.cache)
+            self.seed_input += step
 
-    def minimize(self, seed_input=None, max_iter=200, verbose=True):
+        if overall_loss < self.best_loss:
+            self.best_loss = overall_loss.copy()
+        best_input = self.seed_input.copy()
+        return viz_utils.deprocess_input(best_input[0], self.input_range)
+
+    def minimize(self, seed_input=None, max_iter=10, verbose=True):
         seed_input = self._get_seed_input(seed_input)
         print("seed_input", seed_input.shape)
         cache=None
