@@ -4,6 +4,12 @@
     <button @click="clickButton">Click</button>
     <br>
     <span>Step: {{ this.step }}</span>
+    <br>
+    <select v-model="selected">
+        <option disabled value="">Please select one</option>
+        <option v-for="cls in imagenet_clss" v-bind:value="cls.value">{{cls.text}}</option>
+    </select>
+    <span>Selected: {{ selected }}</span>
     <div id="mlp_fig" style="width:70%; height:400px;"></div>
     </div>
 </template>
@@ -11,13 +17,22 @@
 <script>
 import {mapGetters} from 'vuex'
 import $ from 'jquery'
+
 export default {
     name: "SocketTest",
     data() {
         return {
             socket: null,
-            step: 0
-        }
+            step: 0,
+            selected: 20,
+            imagenet_clss: [
+                { text: 'stingray', value: 6 },
+                { text: 'magpie', value: 18 },
+                { text: 'ouzel', value: 20 },
+                { text: 'bullfrog', value:30},
+                { text: 'turtle', value:37},
+                { text: 'snake', value:55}]
+            }
     },
     mounted(){
         // this.$store.dispatch("SET_CHAT");
@@ -60,7 +75,9 @@ export default {
         clickButton: function () {
             //this.socket.emit('first-connect1','clicked user has connected');
             //console.log("emit");
-            this.socket.emit('firstclick');
+            console.log(this.selected);
+            this.socket.emit('firstclick', this.selected);
+            this.step = 0;
         }
     }
 }

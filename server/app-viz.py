@@ -31,7 +31,7 @@ def handle_message():
     print('first connect')
 
 @socketio.on('firstclick')
-def firstclickRes():
+def firstclickRes(class_idx):
     #print('received message: ' + message)
     print('clicked')
     model_imagenet = VGG16(weights='imagenet', include_top=True)
@@ -40,7 +40,7 @@ def firstclickRes():
     model_imagenet.layers[layer_idx].activation = activations.linear
     model_imagenet = viz_utils.apply_modifications(model_imagenet)
     global opt
-    opt = am.initOptimizer(model_imagenet, layer_idx, class_indices=20)
+    opt = am.initOptimizer(model_imagenet, layer_idx, class_indices=class_idx)
     emit('optinit')
     # plt.imshow(img)
     # plt.show() 
