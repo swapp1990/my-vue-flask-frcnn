@@ -67,10 +67,12 @@ def reset():
     am.modifyOpt(opt, model_imagenet, layer_idx, class_indices=g_cls_idx, l2_norm=True)
 
 @socketio.on('modify')
-def modify():
-    print("modify ", g_cls_idx)
+def modify(params):
+    print("modify ", params)
+    g_cls_idx = params['cls_idx']
+    l2_norm_bool = params['l2_norm']
     layer_idx = viz_utils.find_layer_idx(model_imagenet, 'predictions')
-    am.modifyOpt(opt, model_imagenet, layer_idx, class_indices=g_cls_idx, l2_norm=False)
+    am.modifyOpt(opt, model_imagenet, layer_idx, class_indices=g_cls_idx, l2_norm=l2_norm_bool)
 
 @socketio.on('performminimize')
 def performMinimize(step):
@@ -79,9 +81,13 @@ def performMinimize(step):
     if step < 300:
         if opt is not None:
             fig, ax = plt.subplots()
-            plt.axis('off')
+            #lines = ax.plot(range(10), 'o')
             img = am.visualize_activation_single(opt)
             ax.imshow(img)
+            #points = ax.plot(range(10), 'o')
+            #labels = ['<h1>{title}</h1>'.format(title=i) for i in range(10)]
+            # plugins.connect(fig, plugins.PointLabelTooltip(points[0]))
+            #plugins.connect(fig, plugins.PointHTMLTooltip(points[0], labels))
             mp_fig = mpld3.fig_to_html(fig)
             emit('gotfig', mp_fig)
         else:

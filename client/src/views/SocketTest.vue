@@ -5,7 +5,8 @@
         <button @click="reset">Reset</button>
         <button @click="modify">Modify</button>
         <br>
-        <span>Step: {{ this.step }}</span>
+        <span>Step: {{ this.step }} </span>
+        <span>prevStepImages: {{this.prevStepImages.length}}</span>
         <br>
         <select v-model="selected">
             <option disabled value="">Please select one</option>
@@ -13,8 +14,9 @@
         </select>
         <span>Selected: {{ selected }}</span>
         <br>
-        <button v-for="img,i in prevStepImages" @click="showImg(img)">{{i}}</button>
+        <!-- <button v-for="img,i in prevStepImages" @click="showImg(img)">{{i}}</button> -->
         <button v-if="disableLive" @click="goLive()">Go Live</button>
+        <button v-if="!disableLive" @click="showHighlights()">show Highlights</button>
         <div id="mlp_fig" style="width:70%; height:400px;"></div>
     </div>
 </template>
@@ -37,7 +39,8 @@ export default {
                 { text: 'ouzel', value: 20 },
                 { text: 'bullfrog', value:30},
                 { text: 'turtle', value:37},
-                { text: 'snake', value:55}],
+                { text: 'snake', value:55},
+                { text: 'peacock', value:84}],
             disableLive: false
         }
     },
@@ -64,11 +67,10 @@ export default {
                         var graph1 = $("#mlp_fig");
                         graph1.html(data);
                     }
-                    if(this.step % 10 == 0) {
+                    if(this.step % 5 == 0) {
                         this.prevStepImages.push(data);
-                        console.log(this.prevStepImages.length);
                     }
-                }, 200);
+                }, 50);
                 
             });
         });
@@ -91,7 +93,8 @@ export default {
             // this.step = 500;
         },
         modify() {
-            this.socket.emit('modify');
+            let modifyParams = {"l2_norm": true, "cls_idx": this.selected}
+            this.socket.emit('modify', modifyParams);
         },
         clickButton: function () {
             //this.socket.emit('first-connect1','clicked user has connected');
@@ -107,6 +110,16 @@ export default {
         },
         goLive() {
             this.disableLive = false;
+            clearInterval(this.intervalid1);
+        },
+        showHighlights() {
+            this.disableLive = true;
+            let i = 0;
+            this.intervalid1 = setInterval(() => {
+                i++;
+                if(i == this.prevStepImages.length) i = 0;
+                this.showImg(this.prevStepImages[i]);
+            }, 200);
         }
     }
 }
