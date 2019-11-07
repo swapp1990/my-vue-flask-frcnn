@@ -5,6 +5,8 @@ import Ping from './components/Ping.vue';
 import DrawMnist from './views/DrawMnist.vue';
 import ObjDet from './views/ObjectDetection.vue';
 import SocketTest from './views/SocketTest.vue';
+import ThreadTest from './views/ThreadTest.vue';
+import Saliency from './views/Saliency.vue';
 
 Vue.use(Router);
 
@@ -14,7 +16,7 @@ export default new Router({
   routes: [
     {
       path: '/',
-      component: SocketTest
+      component: Saliency
     },
     {
       path: '/obj',

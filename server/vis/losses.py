@@ -35,7 +35,6 @@ class ActivationMaximization(Loss):
         loss = 0.
         for idx in self.filter_indices:
             loss += -K.mean(layer_output[:, idx])
-       # print("loss ", loss)
         return loss
 
 #Regularizers

@@ -67,10 +67,10 @@ export default {
                         var graph1 = $("#mlp_fig");
                         graph1.html(data);
                     }
-                    if(this.step % 5 == 0) {
-                        this.prevStepImages.push(data);
-                    }
-                }, 50);
+                    // if(this.step % 5 == 0) {
+                    //     this.prevStepImages.push(data);
+                    // }
+                }, 150);
                 
             });
         });

@@ -3,6 +3,7 @@ import tempfile
 import math
 import json
 import six
+from skimage import io, transform
 
 from keras.models import load_model
 import numpy as np
@@ -17,6 +18,11 @@ def find_layer_idx(model, layer_name):
     if layer_idx is None:
         raise ValueError("No layer with name '{}' within the model".format(layer_name))
     return layer_idx
+
+def reverse_enumerate(iterable):
+    """Enumerate over an iterable in reverse order while retaining proper indexes, without creating any copies.
+    """
+    return zip(reversed(range(len(iterable))), reversed(iterable))
 
 def apply_modifications(model, custom_objects=None):
     model_path = os.path.join(tempfile.gettempdir(), next(tempfile._get_candidate_names()) + '.h5')
@@ -88,3 +94,32 @@ Example:
     data formats even though, in tensorflow, slice should be conv_layer[utils.slicer[:, :, :, filter_idx]]
 """
 slicer = _BackendAgnosticImageSlice()
+
+def get_num_filters(layer):
+    """Determines the number of filters within the given `layer`.
+
+    Args:
+        layer: The keras layer to use.
+
+    Returns:
+        Total number of filters within `layer`.
+        For `keras.layers.Dense` layer, this is the total number of outputs.
+    """
+    # Handle layers with no channels.
+    if K.ndim(layer.output) == 2:
+        return K.int_shape(layer.output)[-1]
+
+    channel_idx = 1 if K.image_data_format() == 'channels_first' else -1
+    return K.int_shape(layer.output)[channel_idx]
+
+def load_img(path, grayscale=False, target_size=None):
+    img = io.imread(path, grayscale)
+    if target_size:
+        img = transform.resize(img, target_size, preserve_range=True)
+    return img
+
+def normalize(array, min_value=0., max_value=1.):
+    arr_min = np.min(array)
+    arr_max = np.max(array)
+    normalized = (array - arr_min) / (arr_max - arr_min + K.epsilon())
+    return (max_value - min_value) * normalized + min_value

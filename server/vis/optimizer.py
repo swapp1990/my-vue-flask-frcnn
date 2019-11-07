@@ -3,10 +3,11 @@ from __future__ import absolute_import
 import numpy as np
 from keras import backend as K
 from util import viz_utils
+from vis.input_modifiers import Jitter
 
 class Optimizer(object):
 
-    def __init__(self, input_tensor, losses, input_range=(0, 255)):
+    def __init__(self, input_tensor, losses, input_range=(0, 255), wrt_tensor=None):
         """Creates an optimizer that minimizes weighted loss function.
         Args:
             losses: List of ([Loss](vis.losses.md#Loss), weight) tuples.
@@ -17,10 +18,15 @@ class Optimizer(object):
         self.cache=None
         self.best_loss = float('inf')
         self.grads = None
-        self.wrt_tensor = self.input_tensor
+        #self.wrt_tensor = self.input_tensor
+        self.wrt_tensor = self.input_tensor if wrt_tensor is None else wrt_tensor
+
         if self.input_tensor is self.wrt_tensor:
             self.wrt_tensor_is_input_tensor = True
             self.wrt_tensor = K.identity(self.wrt_tensor)
+        else:
+            self.wrt_tensor_is_input_tensor = False
+
         self.loss_functions = []
         self.loss_names = []
         overall_loss = None
@@ -32,8 +38,12 @@ class Optimizer(object):
                 overall_loss = loss_fn if overall_loss is None else overall_loss + loss_fn
                 self.loss_names.append(loss.name)
                 self.overall_loss = overall_loss
+
         if self.wrt_tensor_is_input_tensor:
             grads = K.gradients(overall_loss, self.input_tensor)[0]
+        else:
+            grads = K.gradients(overall_loss, self.wrt_tensor)[0]
+
         # K.function just glues the inputs to the outputs returning a single operation that when given the inputs it will follow the computation graph from the inputs to the defined outputs. It's symbolic.
         self.compute_fn = K.function([self.input_tensor, K.learning_phase()], self.loss_functions + [overall_loss, grads, self.wrt_tensor])
 
@@ -62,15 +72,24 @@ class Optimizer(object):
 
     def _get_seed_input(self, seed_input):
         """Creates a random seed_input if None """
+        desired_shape = (1, ) + K.int_shape(self.input_tensor)[1:]
         if seed_input is None:
-            desired_shape = (1, ) + K.int_shape(self.input_tensor)[1:]
             return viz_utils.random_array(desired_shape, mean=np.mean(self.input_range),
                                       std=0.05 * (self.input_range[1] - self.input_range[0]))
-        else:
-            return seed_input
+         # Add batch dim if needed.
+        if len(seed_input.shape) != len(desired_shape):
+            seed_input = np.expand_dims(seed_input, 0)
+
+        return seed_input
     
     def minimizeSingle(self):
         self.seed_input = self._get_seed_input(self.seed_input)
+       #Jitter
+        # input_modifiers = [Jitter(16)]
+        #  # Apply modifiers `pre` step
+        # for modifier in input_modifiers:
+        #     self.seed_input = modifier.pre(self.seed_input)
+
         computed_values = self.compute_fn([self.seed_input, 0])
         losses = computed_values[:len(self.loss_names)]
         named_losses = list(zip(self.loss_names, losses))
@@ -90,6 +109,13 @@ class Optimizer(object):
     def minimize(self, seed_input=None, max_iter=10, verbose=True):
         seed_input = self._get_seed_input(seed_input)
         print("seed_input", seed_input.shape)
+        
+        #Jitter
+        # input_modifiers = [Jitter(16)]
+        #  # Apply modifiers `pre` step
+        # for modifier in input_modifiers:
+        #     seed_input = modifier.pre(seed_input)
+
         cache=None
         best_loss = float('inf')
         best_input = None
@@ -103,14 +129,17 @@ class Optimizer(object):
             losses = computed_values[:len(self.loss_names)]
             named_losses = list(zip(self.loss_names, losses))
             overall_loss, grads, wrt_value = computed_values[len(self.loss_names):]
+            #grads is in float, for saliency convert it into 'absolute'
+            grads = np.abs(grads)
             print("named_losses ", named_losses)
             print("overall_loss ", overall_loss)
             if self.wrt_tensor_is_input_tensor:
                 step, cache = self._rmsprop(grads, cache)
+                #print(step)
                 seed_input += step
             
             if overall_loss < best_loss:
                 best_loss = overall_loss.copy()
                 best_input = seed_input.copy()
         
-        return viz_utils.deprocess_input(best_input[0], self.input_range)
+        return viz_utils.deprocess_input(best_input[0], self.input_range), grads, wrt_value
