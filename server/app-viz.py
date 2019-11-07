@@ -1,3 +1,15 @@
+import base64
+from matplotlib import pyplot as plt
+import numpy as np
+import mpld3
+import json
+from mpld3 import plugins
+import time
+import matplotlib.cm as cm
+from scipy.misc import imread, imresize
+import re
+import imageio
+
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from flask import Response
@@ -8,12 +20,8 @@ from keras import activations
 from util import viz_utils
 from vis import activation_maximization as am
 from vis import saliency
-from matplotlib import pyplot as plt
-import numpy as np
-import mpld3
-from mpld3 import plugins
-import time
-import matplotlib.cm as cm
+import global_vars as G
+
 # instantiate the app
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'secret!'
@@ -22,15 +30,69 @@ socketio = SocketIO(app, cors_allowed_origins="*")
 #app.config.from_object(__name__)
 
 # enable CORS
-CORS(app, resources={r'/*': {'origins': '*'}}) 
+CORS(app, resources={r'/*': {'origins': '*'}})
 
 global opt, model_imagenet, g_cls_idx
 opt = None
 model_imagenet = None
 g_cls_idx = 20
 
-# def init():
-#     global fig, ax
+####################################################################################################
+#Save uploaded image as a global var
+def convertImage(imgData):
+    imgstr = re.search(r'base64,(.*)', str(imgData)).group(1)
+    with open('client_img.png', 'wb') as output:
+        output.write(base64.b64decode(imgstr))
+        print('Saved as client_img.png')
+
+@app.route('/api/upload', methods=['GET','POST'])
+# @cross_origin(allow_headers=['Content-Type'])
+def upload_img():
+    if request.method == 'POST':
+        """ Receive base 64 encoded image """
+        print('Image received')
+        imgData = request.get_data()
+        convertImage(imgData)
+        # read the image into memory and convert into numpy array
+        x = imageio.imread('client_img.png', as_gray=False, pilmode="RGB")
+        G.client_img = x
+        print('client_img ', G.client_img.shape)
+        return "Success"
+####################################################################################################
+######################################### Saliency #############################################
+def initImagenet():
+    model = VGG16(weights='imagenet', include_top=True)
+    layer_idx = viz_utils.find_layer_idx(model, 'predictions')
+    model.layers[layer_idx].activation = activations.linear
+    model = viz_utils.apply_modifications(model)
+    return model, layer_idx
+
+@app.route('/getSaliency', methods=['GET','POST'])
+def getSaliency():
+    print('getSaliency')
+    plt.figure(figsize=(8,8))
+    fig, ax = plt.subplots()
+    model, layer_idx = initImagenet()
+    img = viz_utils.load_img('client_img.png', target_size=(224, 224))
+    grads = saliency.visualize_saliency(model, layer_idx, class_indices=235, seed_input=img)
+    ax.imshow(grads, cmap='jet')
+    mp_fig = mpld3.fig_to_html(fig)
+    return Response(json.dumps([mp_fig]),  mimetype='application/json')
+
+@app.route('/getGradCam', methods=['GET','POST'])
+def getGradCam():
+    print('getGradCam')
+    plt.figure(figsize=(8,8))
+    fig, ax = plt.subplots()
+    model, layer_idx = initImagenet()
+    img = viz_utils.load_img('client_img.png', target_size=(224, 224))
+    grads = saliency.visualize_cam(model, layer_idx, class_indices=235, seed_input=img)
+    jet_heatmap = np.uint8(cm.jet(grads)[..., :3] * 255)
+    ax.imshow(overlay(jet_heatmap, img))
+    mp_fig = mpld3.fig_to_html(fig)
+    return Response(json.dumps([mp_fig]),  mimetype='application/json')
+####################################################################################################
+
 def overlay(array1, array2, alpha=0.5):
     """Overlays `array1` onto `array2` with `alpha` blending.
 
@@ -72,7 +134,7 @@ def testinit():
     plt.show()
 
 #init()
-testinit()
+#testinit()
 
 
 @socketio.on('first-connect1')
