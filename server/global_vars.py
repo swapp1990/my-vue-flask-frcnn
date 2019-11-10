@@ -1,5 +1,9 @@
 #Common
 global client_img
+global active_threads
+active_threads = []
+
+global img_gen
 
 #Constants
 global class_mapping

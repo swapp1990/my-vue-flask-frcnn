@@ -63,13 +63,13 @@ def visualize_activation(model, layer_idx, class_indices=None, seed_input=None, 
     losses = [
         (ActivationMaximization(model.layers[layer_idx], class_indices), actmaxloss_contrib),
         (LPNorm(model.input), lp_norm_weight),
-
+        (TotalVariation(model.input), tv_weight)
     ]
 
     #init optimizer with a list of losses
     opt = Optimizer(input_tensor, losses)
     #minimizes the loss using iterations
-    img = opt.minimize(**optimizer_params)
+    img = opt.minimize(**optimizer_params)[0]
     # If range has integer numbers, cast to 'uint8'
     if isinstance(input_range[0], int) and isinstance(input_range[1], int):
         img = np.clip(img, input_range[0], input_range[1]).astype('uint8')

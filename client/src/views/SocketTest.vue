@@ -60,17 +60,15 @@ export default {
                 this.socket.emit('performminimize', this.step++);
             })
             this.socket.on('gotfig', (data) => {
-                setTimeout(() => {
-                    // console.log('Got Fig');
-                    this.socket.emit('performminimize', this.step++);
-                    if(!this.disableLive) {
-                        var graph1 = $("#mlp_fig");
-                        graph1.html(data);
-                    }
-                    // if(this.step % 5 == 0) {
-                    //     this.prevStepImages.push(data);
-                    // }
-                }, 150);
+                console.log("gotfig");
+                this.socket.emit('performminimize', this.step++);
+                if(!this.disableLive) {
+                    var graph1 = $("#mlp_fig");
+                    graph1.html(data);
+                }
+                // if(this.step % 5 == 0) {
+                //     this.prevStepImages.push(data);
+                // }
                 
             });
         });

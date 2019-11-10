@@ -9,7 +9,8 @@ import matplotlib.cm as cm
 from scipy.misc import imread, imresize
 import re
 import imageio
-
+import tensorflow as tf
+from keras import backend as K
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from flask import Response
@@ -111,7 +112,44 @@ def overlay(array1, array2, alpha=0.5):
         raise ValueError('`array1` and `array2` must have the same shapes')
 
     return (array1 * alpha + array2 * (1. - alpha)).astype(array1.dtype)
-    
+
+def deprocess_image(x):
+    # normalize tensor: center on 0., ensure std is 0.1
+    x -= x.mean()
+    x /= (x.std() + 1e-5)
+    x *= 0.1
+
+    # clip to [0, 1]
+    x += 0.5
+    x = np.clip(x, 0, 1)
+
+    # convert to RGB array
+    x *= 255
+    x = np.clip(x, 0, 255).astype('uint8')
+    return x
+
+def testinit_conv():
+    model = VGG16(weights='imagenet', include_top=True)
+    layer_name = 'block3_conv1'
+    filter_index = 15
+    layer_output = model.get_layer(layer_name).output
+    loss = K.mean(layer_output[:, :, :, filter_index])
+    grads = K.gradients(loss, model.input)[0]
+    grads /= (K.sqrt(K.mean(K.square(grads))) + 1e-5)
+    iterate = K.function([model.input], [loss, grads])
+    loss_value, grads_value = iterate([np.zeros((1, 150, 150, 3))])
+    input_img_data = np.random.random((1, 150, 150, 3)) * 20 + 128.
+    step = 1.
+    for i in range(40):
+        loss_value, grads_value = iterate([input_img_data])
+        input_img_data += grads_value * step
+
+    img = input_img_data[0]
+    img = deprocess_image(img)
+    plt.axis('off')
+    plt.imshow(img)
+    plt.show()
+
 def testinit():
     model_imagenet = VGG16(weights='imagenet', include_top=True)
     layer_idx = viz_utils.find_layer_idx(model_imagenet, 'predictions')
@@ -135,7 +173,7 @@ def testinit():
 
 #init()
 #testinit()
-
+#testinit_conv()
 
 @socketio.on('first-connect1')
 def handle_message():
@@ -149,13 +187,10 @@ def firstclickRes(class_idx):
     global model_imagenet, g_cls_idx
     model_imagenet = VGG16(weights='imagenet', include_top=True)
     layer_idx = viz_utils.find_layer_idx(model_imagenet, 'predictions')
-    #layer_idx = viz_utils.find_layer_idx(model_imagenet, 'block1_conv2')
-    
-    # Swap softmax with linear
-    #model_imagenet.layers[layer_idx].activation = activations.linear
-    #model_imagenet = viz_utils.apply_modifications(model_imagenet)
+    #layer_idx = viz_utils.find_layer_idx(model_imagenet, 'block5_conv3')
+
     global opt
-    opt = am.initOptimizer(model_imagenet, layer_idx, class_indices=class_idx)
+    opt = am.initOptimizer(model_imagenet, layer_idx, class_indices=56)
     g_cls_idx = class_idx
     emit('optinit')
 
@@ -177,10 +212,11 @@ def modify(params):
 def performMinimize(step):
     print("performMinimize ", step)
     #global fig
-    if step < 300:
+    if step < 100:
         if opt is not None:
             fig, ax = plt.subplots()
             #lines = ax.plot(range(10), 'o')
+            time.sleep(1)
             img = am.visualize_activation_single(opt)
             ax.imshow(img)
             #points = ax.plot(range(10), 'o')

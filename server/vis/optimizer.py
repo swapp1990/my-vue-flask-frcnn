@@ -48,7 +48,6 @@ class Optimizer(object):
         self.compute_fn = K.function([self.input_tensor, K.learning_phase()], self.loss_functions + [overall_loss, grads, self.wrt_tensor])
 
     def updateLosses(self, input_tensor, losses):
-        print("b overall ", self.overall_loss)
         self.loss_functions = []
         self.loss_names = []
         for loss, contrib in losses:
@@ -93,7 +92,7 @@ class Optimizer(object):
         computed_values = self.compute_fn([self.seed_input, 0])
         losses = computed_values[:len(self.loss_names)]
         named_losses = list(zip(self.loss_names, losses))
-        print("named_losses ", named_losses)
+        #print("named_losses ", named_losses)
         overall_loss, grads, wrt_value = computed_values[len(self.loss_names):]
         print("overall_loss ", overall_loss)
         self.overall_loss = overall_loss

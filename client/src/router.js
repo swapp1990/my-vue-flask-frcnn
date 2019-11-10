@@ -5,8 +5,10 @@ import Ping from './components/Ping.vue';
 import DrawMnist from './views/DrawMnist.vue';
 import ObjDet from './views/ObjectDetection.vue';
 import SocketTest from './views/SocketTest.vue';
+import LucidTest from './views/LucidTest.vue';
 import ThreadTest from './views/ThreadTest.vue';
 import Saliency from './views/Saliency.vue';
+import IntermediateStepView from './views/IntermediateStepView.vue';
 
 Vue.use(Router);
 
@@ -16,7 +18,7 @@ export default new Router({
   routes: [
     {
       path: '/',
-      component: Saliency
+      component: LucidTest
     },
     {
       path: '/obj',

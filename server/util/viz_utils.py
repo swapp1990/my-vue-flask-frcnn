@@ -95,6 +95,40 @@ Example:
 """
 slicer = _BackendAgnosticImageSlice()
 
+def stitch_images(images, margin=5, cols=5):
+    """Utility function to stitch images together with a `margin`.
+
+    Args:
+        images: The array of 2D images to stitch.
+        margin: The black border margin size between images (Default value = 5)
+        cols: Max number of image cols. New row is created when number of images exceed the column size.
+            (Default value = 5)
+
+    Returns:
+        A single numpy image array comprising of input images.
+    """
+    if len(images) == 0:
+        return None
+
+    h, w, c = images[0].shape
+    n_rows = int(math.ceil(len(images) / cols))
+    n_cols = min(len(images), cols)
+
+    out_w = n_cols * w + (n_cols - 1) * margin
+    out_h = n_rows * h + (n_rows - 1) * margin
+    stitched_images = np.zeros((out_h, out_w, c), dtype=images[0].dtype)
+
+    for row in range(n_rows):
+        for col in range(n_cols):
+            img_idx = row * cols + col
+            if img_idx >= len(images):
+                break
+
+            stitched_images[(h + margin) * row: (h + margin) * row + h,
+                            (w + margin) * col: (w + margin) * col + w, :] = images[img_idx]
+
+    return stitched_images
+
 def get_num_filters(layer):
     """Determines the number of filters within the given `layer`.
 
