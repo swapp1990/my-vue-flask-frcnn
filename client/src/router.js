@@ -6,6 +6,7 @@ import DrawMnist from './views/DrawMnist.vue';
 import ObjDet from './views/ObjectDetection.vue';
 import SocketTest from './views/SocketTest.vue';
 import LucidTest from './views/LucidTest.vue';
+import Lucid2Test from './views/Lucid2Images.vue';
 import ThreadTest from './views/ThreadTest.vue';
 import Saliency from './views/Saliency.vue';
 import IntermediateStepView from './views/IntermediateStepView.vue';
@@ -18,7 +19,7 @@ export default new Router({
   routes: [
     {
       path: '/',
-      component: LucidTest
+      component: Lucid2Test
     },
     {
       path: '/obj',

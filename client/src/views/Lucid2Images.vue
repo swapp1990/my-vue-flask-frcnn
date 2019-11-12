@@ -1,21 +1,10 @@
 <template>
     <div>
-        <!-- <h1 class="ml1">
-            <span class="text-wrapper">
-                <span class="line line1"></span>
-                <span class="letters">SOCKET</span>
-                <span class="line line2"></span>
-            </span>
-        </h1> -->
         <br>
+        <input type="checkbox" id="checkbox" v-model="showNegative">
+        <label for="checkbox">Show Negative: {{ showNegative }}</label>
         <button @click="initThreads()">Start Threads</button>
-        <!-- <button @click="startLucid()">Start</button>
-        <button @click="nextLucid()">Next</button>
-        <button @click="stopLucid()">Stop</button>
-        <input v-model="filter_idx"> -->
         <br>
-        <!-- <button @click="startThread()">Start Thread</button>
-        <input v-model="filter_idx"> -->
         <div class="row">
             <div v-for="t in activeThreads" class="col-sm">
                 Thread {{t.id}}, Filter Index {{t.filterIndex}}: <span>Step {{t.step}}</span>
@@ -39,6 +28,7 @@
         <!-- <span>Step: {{ this.step }} </span> -->
         <!-- <span>prevStepImages: {{this.prevStepImages.length}}</span> -->
         <br>
+
         <!-- <select v-model="selected">
             <option disabled value="">Please select one</option>
             <option v-for="cls in imagenet_clss" v-bind:value="cls.value">{{cls.text}}</option>
@@ -57,7 +47,7 @@ import $ from 'jquery'
 import spinner from '@/components/Spinner'
 
 export default {
-    name: "LucidTest",
+    name: "Lucid2Test",
     components: {
         spinner: spinner
     },
@@ -84,29 +74,16 @@ export default {
                 { text: 'peacock', value:84}],
             disableLive: false,
             activeThreads: [],
-            stepLimit: 50,
+            stepLimit: 200,
             figHeight: 400,
-            figWidth: 400
+            figWidth: 400,
+            showNegative: false
         }
     },
     mounted(){
-        // this.initText();
-        this.step = 0;
-        // this.$store.dispatch("SET_CHAT");
-        // this.sockets.subscribe('customEmit', (data) => {
-        //     console.log(data);
-        // });
         this.socket = io.connect('http://127.0.0.1:5000');
         this.socket.on('connect',()=>{
             console.log("connected");
-            this.socket.on('gotfig', (data) => {
-                if(!this.stopped) {
-                    this.socket.emit('nextImg', this.step++);
-                    console.log("gotfig ", this.step);
-                    var graph1 = $("#mlp_fig");
-                    graph1.html(data);
-                }
-            });
             this.socket.on('test', (id) => {
                 console.log("test ", id);
             });
@@ -116,53 +93,24 @@ export default {
                 this.stopActiveThread(id);
             });
             this.socket.on('workFinished', (obj) => {
-                console.log('workFinished', obj);
+                // console.log('workFinished', obj);
                 this.doClientWork(obj);
             });
         });
     },
     methods: {
         initThreads() {
-            // let filters = [24,67,86,123,45];
-            let filters = [24];
+            let filters = [24,67,86,123,45];
+            // let filters = [24];
             let id = 0;
             filters.forEach(f => {
                 let style = {height: this.figHeight, width: this.figWidth};
                 let params = {id: id, filterIndex: f, active: true, step: 0};
                 this.activeThreads.push(params);
-                let socketParam = {id: params.id, filterIndex: params.filterIndex, style: style};
+                let socketParam = {id: params.id, filterIndex: params.filterIndex, style: style, negative: this.showNegative};
                 console.log(socketParam);
                 this.socket.emit('startNewThread', socketParam);
                 id++;
-            });
-        },
-        initText() {
-            var textWrapper = document.querySelector('.ml1 .letters');
-            textWrapper.innerHTML = textWrapper.textContent.replace(/\S/g, "<span class='letter'>$&</span>");
-
-            anime.timeline({loop: true})
-            .add({
-                targets: '.ml1 .letter',
-                scale: [0.3,1],
-                opacity: [0,1],
-                translateZ: 0,
-                easing: "easeOutExpo",
-                duration: 600,
-                delay: (el, i) => 70 * (i+1)
-            }).add({
-                targets: '.ml1 .line',
-                scaleX: [0,1],
-                opacity: [0.5,1],
-                easing: "easeOutExpo",
-                duration: 700,
-                offset: '-=875',
-                delay: (el, i, l) => 80 * (l - i)
-            }).add({
-                targets: '.ml1',
-                opacity: 0,
-                duration: 1000,
-                easing: "easeOutExpo",
-                delay: 1000
             });
         },
         doClientWork(obj) {
@@ -180,29 +128,9 @@ export default {
                 }, 200);
             }
         },
-        reset() {
-            this.socket.emit('reset');
-            // this.step = 500;
-        },
-        modify() {
-            let modifyParams = {"l2_norm": true, "cls_idx": this.selected}
-            this.socket.emit('modify', modifyParams);
-        },
-        startLucid() {
-            this.step = 0;
-            this.stopped = false;
-            this.socket.emit('startLucid', this.filter_idx);
-        },
-        nextLucid() {
-            this.socket.emit('nextImg', this.step);
-        },
-        stopLucid() {
-            this.stopped = true;
-        },
+        //Thread
         startThread() {
-            //if(!this.filter_idx) this.filter_idx = 20;
-            
-            this.threadC += 1;
+
         },
         perform(id) {
             this.socket.emit('perform', id);
@@ -225,31 +153,6 @@ export default {
             var index = this.activeThreads.map(function(e) { return e.id; }).indexOf(id);
             if (index !== -1) this.activeThreads.splice(index, 1);
         },
-        clickButton: function () {
-            //this.socket.emit('first-connect1','clicked user has connected');
-            //console.log("emit");
-            console.log(this.selected);
-            this.socket.emit('firstclick', this.selected);
-            this.step = 0;
-        },
-        showImg(imgData) {
-            this.disableLive = true;
-            var graph1 = $("#mlp_fig");
-            graph1.html(imgData);
-        },
-        goLive() {
-            this.disableLive = false;
-            clearInterval(this.intervalid1);
-        },
-        showHighlights() {
-            this.disableLive = true;
-            let i = 0;
-            this.intervalid1 = setInterval(() => {
-                i++;
-                if(i == this.prevStepImages.length) i = 0;
-                this.showImg(this.prevStepImages[i]);
-            }, 200);
-        }
     }
 }
 </script>
@@ -258,34 +161,4 @@ export default {
 .mlp_div {
     background-color: aqua;
 }
-.ml1 {
-  font-weight: 900;
-  font-size: 3.5em;
-}
-
-.ml1 .letter {
-  display: inline-block;
-  line-height: 1em;
-}
-
-.ml1 .text-wrapper {
-  position: relative;
-  display: inline-block;
-  padding-top: 0.1em;
-  padding-right: 0.05em;
-  padding-bottom: 0.15em;
-}
-
-.ml1 .line {
-  opacity: 0;
-  position: absolute;
-  left: 0;
-  height: 3px;
-  width: 100%;
-  background-color: #fff;
-  transform-origin: 0 0;
-}
-
-.ml1 .line1 { top: 0; }
-.ml1 .line2 { bottom: 0; }
 </style>

@@ -16,6 +16,7 @@ import lucid.optvis.objectives as objectives
 import lucid.optvis.param as param
 import lucid.optvis.render as render
 import lucid.optvis.transform as transform
+import IPython.display
 
 from flask import Flask, jsonify, request
 from flask_cors import CORS
@@ -33,29 +34,34 @@ socketio = SocketIO(app, cors_allowed_origins="*", logger=True, async_mode='thre
 # enable CORS
 CORS(app, resources={r'/*': {'origins': '*'}}) 
 
-def initTest():
-    model = models.InceptionV1()
-    model.load_graphdef()
-    _ = swapRender.render_vis(model, "mixed4a_pre_relu:476")
-
-#initTest()
-
-def convertImgToFig(img):
+def convertImgToFig(img, style=None):
+    figHeight = 2
+    figWidth = 2
+    if style is not None:
+        figHeight = int(style['height']/100)
+        figWidth = int(style['width']/100)
+    plt.axis('off')
     fig, ax = plt.subplots()
+    ax.set_xticks([])
+    ax.set_yticks([])
     ax.imshow(img)
+    #(200, 200) size
+    #print(figWidth, figHeight)
+    plt.gcf().set_size_inches(figWidth, figHeight)
+    #plt.show()
     mp_fig = mpld3.fig_to_html(fig)
     return mp_fig
 
 ######################################### Socket #############################################
-def initGenerator(filter_idx):
+def initGenerator(filter_idx, show_negative=False):
     model = models.InceptionV1()
     model.load_graphdef()
-    print("Model loaded")
+    #print("Model loaded")
 
     layer_name = "mixed4a_pre_relu"
     name = layer_name + ":" + str(filter_idx)
-    print(name)
-    img_gen = swapRender.render_vis_yield(model, name, max_steps=500)
+    #print(name)
+    img_gen = swapRender.render_vis_yield(model, layer_name, filter_idx, show_negative=show_negative, max_steps=500)
     return img_gen
 
 @socketio.on('startLucid')
@@ -68,7 +74,7 @@ def startLucid(filter_idx=0):
     layer_name = "mixed4a_pre_relu"
     name = layer_name + ":" + str(filter_idx)
     print(name)
-    G.img_gen = swapRender.render_vis_yield(model, name, max_steps=500)
+    G.img_gen = swapRender.render_vis_yield(model, name,filter_idx, max_steps=500)
     img = next(G.img_gen)
     emit('gotfig', convertImgToFig(img))
 
@@ -92,14 +98,16 @@ class Worker(threading.Thread):
         self.id = params["id"]
         self.step = 0
         self.filter_idx = params["filter_idx"]
-        self.imgGenerator = initGenerator(self.filter_idx)
+        self.style = params["style"]
+        self.showNegative = params["negative"]
+        self.imgGenerator = initGenerator(self.filter_idx, self.showNegative)
         active_queues.append(self.mailbox)
                     
     def doWork(self):
         # socketio.emit('test', self.id, broadcast=True)
         img = next(self.imgGenerator)
         #print(img.shape)
-        fig = convertImgToFig(img)
+        fig = convertImgToFig(img, self.style)
         obj = {"id": self.id, "step": self.step, "fig": fig}
         socketio.emit('workFinished', obj)
         self.step = self.step+1
@@ -141,10 +149,18 @@ def broadcast_event(data):
 @socketio.on('startNewThread')
 def startNewThread(params):
     print(params)
-    thread = Worker({"id": params['id'], "filter_idx": params['filterIndex']})
+    thread = Worker({
+                     "id": params['id'], 
+                     "filter_idx": params['filterIndex'], 
+                     "style": params['style'],
+                     "negative": params['negative']
+                    })
     thread.start()
     print("start thread " + str(params['id']) + " filter " + str(params['filterIndex']))
     G.active_threads.append(thread)
+    # time.sleep(0.5)
+    # msg = {"id": params['id'], "action": "perform"}
+    # broadcast_event(msg)
 
 @socketio.on('perform')
 def perform(id):
@@ -159,6 +175,18 @@ def stopThread(id):
             t.stop()
 ######################################################################################
 
+def initTest():
+    print('init')
+    model = models.InceptionV1()
+    model.load_graphdef()
+    swapRender.render_vis_test(model)
+    # imgGenerator = initGenerator(42)
+    # img = next(imgGenerator)
+    # print(img.shape)
+    # convertImgToFig(img)
+    #initGraph()
+
+#initTest()
 if __name__ == "__main__":
     # format = "%(asctime)s: %(message)s"
     # logging.basicConfig(format=format, level=logging.INFO,
@@ -166,4 +194,5 @@ if __name__ == "__main__":
 
     print("running socketio")
     socketio.run(app)
-    # app.run(debug=True, use_reloader=False)
+
+    #app.run(debug=True, use_reloader=False)
