@@ -47,21 +47,31 @@ def convertImgToFig(img, style=None):
     ax.imshow(img)
     #(200, 200) size
     #print(figWidth, figHeight)
-    plt.gcf().set_size_inches(figWidth, figHeight)
+    # plt.gcf().set_size_inches(figWidth, figHeight)
     #plt.show()
     mp_fig = mpld3.fig_to_html(fig)
     return mp_fig
 
 ######################################### Socket #############################################
-def initGenerator(filter_idx, show_negative=False):
+#Init the type of generator for image viz.
+def initGenerator(filter_idx, config):
+    print("config ", config)
     model = models.InceptionV1()
     model.load_graphdef()
     #print("Model loaded")
 
-    layer_name = "mixed4a_pre_relu"
-    name = layer_name + ":" + str(filter_idx)
-    #print(name)
-    img_gen = swapRender.render_vis_yield(model, layer_name, filter_idx, show_negative=show_negative, max_steps=500)
+    show_negative = config['negative']
+    n_batch = config['batch']
+    layer_name = "mixed5a"
+    img_gen = None
+    #The original 'render_vis'
+    if config['diversity']:
+        img_gen = swapRender.diversity_render_yield(model, filter_idx, layer_name, n_batch=n_batch)
+    else:
+        img_gen = swapRender.render_vis_yield(model, "mixed5a_pre_relu", filter_idx, show_negative=show_negative, max_steps=500)
+    #Generator for testing deversity objective
+    layer_name = "mixed5a"
+
     return img_gen
 
 @socketio.on('startLucid')
@@ -99,8 +109,8 @@ class Worker(threading.Thread):
         self.step = 0
         self.filter_idx = params["filter_idx"]
         self.style = params["style"]
-        self.showNegative = params["negative"]
-        self.imgGenerator = initGenerator(self.filter_idx, self.showNegative)
+        self.config = params["config"]
+        self.imgGenerator = initGenerator(self.filter_idx, self.config)
         active_queues.append(self.mailbox)
                     
     def doWork(self):
@@ -149,14 +159,9 @@ def broadcast_event(data):
 @socketio.on('startNewThread')
 def startNewThread(params):
     print(params)
-    thread = Worker({
-                     "id": params['id'], 
-                     "filter_idx": params['filterIndex'], 
-                     "style": params['style'],
-                     "negative": params['negative']
-                    })
+    thread = Worker(params)
     thread.start()
-    print("start thread " + str(params['id']) + " filter " + str(params['filterIndex']))
+    print("start thread " + str(params['id']) + " filter " + str(params['filter_idx']))
     G.active_threads.append(thread)
     # time.sleep(0.5)
     # msg = {"id": params['id'], "action": "perform"}
@@ -179,7 +184,8 @@ def initTest():
     print('init')
     model = models.InceptionV1()
     model.load_graphdef()
-    swapRender.render_vis_test(model)
+    swapRender.test_obj_f(model)
+    # swapRender.render_vis_test(model)
     # imgGenerator = initGenerator(42)
     # img = next(imgGenerator)
     # print(img.shape)
@@ -194,5 +200,4 @@ if __name__ == "__main__":
 
     print("running socketio")
     socketio.run(app)
-
     #app.run(debug=True, use_reloader=False)

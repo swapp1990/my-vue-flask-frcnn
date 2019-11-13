@@ -53,7 +53,7 @@ export default {
     },
     computed: {
         figStyle() {
-            return 'width: ' + this.figWidth + 'px; height: ' + this.figHeight + 'px;';
+            return 'width: ' + this.figWidth*2 + 'px; height: ' + this.figHeight + 'px;';
         }
     },
     data() {
@@ -74,7 +74,7 @@ export default {
                 { text: 'peacock', value:84}],
             disableLive: false,
             activeThreads: [],
-            stepLimit: 200,
+            stepLimit: 500,
             figHeight: 400,
             figWidth: 400,
             showNegative: false
@@ -100,18 +100,37 @@ export default {
     },
     methods: {
         initThreads() {
-            let filters = [24,67,86,123,45];
-            // let filters = [24];
+            // let filters = [24,67,86,123,45];
+            let filters = [24];
             let id = 0;
+            //Show normal viz
+            // let config = {channel: true, diversity: false, batch: 1, negative: this.showNegative};
+            // filters.forEach(f => {
+            //     let params = {id: id, filterIndex: f, active: true, step: 0};
+            //     this.activeThreads.push(params);
+            //     let socketParams = this.setSocketParams(config, id, f);
+            //     console.log(socketParams);
+            //     this.socket.emit('startNewThread', socketParams);
+            //     id++;
+            // });
+
+            //Show diversity Viz
+            let config = {channel: true, diversity: true, batch: 4, negative: this.showNegative};
             filters.forEach(f => {
-                let style = {height: this.figHeight, width: this.figWidth};
                 let params = {id: id, filterIndex: f, active: true, step: 0};
                 this.activeThreads.push(params);
-                let socketParam = {id: params.id, filterIndex: params.filterIndex, style: style, negative: this.showNegative};
-                console.log(socketParam);
-                this.socket.emit('startNewThread', socketParam);
+                let socketParams = this.setSocketParams(config, id, f);
+                console.log(socketParams);
+                this.socket.emit('startNewThread', socketParams);
                 id++;
             });
+
+
+        },
+        setSocketParams(config, id, channel_index) {
+            let style = {height: this.figHeight, width: this.figWidth};
+            let socketParam = {id: id, filter_idx: channel_index, style: style, config: config};
+            return socketParam
         },
         doClientWork(obj) {
             let imgData = obj.fig;

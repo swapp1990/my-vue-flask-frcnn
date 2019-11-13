@@ -70,7 +70,58 @@ def import_model(model, t_image, t_image_raw=None, scope="import"):
 
     return model_tensor_f
 
-def my_objective_func(layer, n_channel, batch=None):
+###################################### Diversity Obj Func Yield #####################################
+#Must always return a Tensor 'T(layer)' (processed with the objective func)
+def diversity_obj_f(layer):
+    """Encourage diversity between each batch element.
+    Calculates the correlation matrix of activations at layer for each given image (from batch), when that image is passed through this layer. Then it penalizes cosine similarity between them.
+    The func returns ?
+    """
+    def inner(T):
+        layer_t = T(layer)
+        batch_n, _, _, channels = layer_t.get_shape().as_list()
+        #(4,25 (5*5), n_channels)
+        flattened = tf.reshape(layer_t, [batch_n, -1, channels])
+        grams = tf.matmul(flattened, flattened, transpose_a=True)
+        grams = tf.nn.l2_normalize(grams, axis=[1,2], epsilon=1e-10)
+        grams_sum = sum([ sum([ tf.reduce_sum(grams[i]*grams[j])
+                      for j in range(batch_n) if j != i])
+                for i in range(batch_n)]) / batch_n
+
+        # for i in range(batch_n)
+        #     for j in range(batch_n):
+        #         if j != i:
+        #            grams_sum = sum(tf.reduce_sum(grams[i]*grams[j]), grams_sum)
+
+        return grams_sum
+    return inner
+
+def diversity_render_yield(model, filter_idx, layer, n_batch=2):
+    #Init
+    param_f = lambda: param.image(128, batch=n_batch)
+    #Only diversity obj
+    #objective_f = diversity_obj_f("mixed5a")
+    #diff between channel obj and diversity obj
+    print("obj1=" + "mixed5a_pre_relu:" +str(filter_idx))
+    obj1 = channel_obj_f("mixed5a_pre_relu", filter_idx)
+    obj2 = diversity_obj_f("mixed5a")
+    obj_f = my_diff_objs_f(obj1, obj2, subWeight=0.01)
+
+    with tf.Graph().as_default() as graph, tf.Session() as sess:
+        T = make_vis_T(model, obj_f, param_f)
+        loss, vis_op, t_image = T("loss"), T("vis_op"), T("input")
+        tf.global_variables_initializer().run()
+        i = 1
+        img = None
+        while i < 400:
+            loss_, _ = sess.run([loss, vis_op])
+            vis = t_image.eval()
+            img = np.hstack(vis)
+            yield img
+            i += 1
+
+####################################################################################################
+def channel_obj_f(layer, n_channel, batch=None):
     def inner(T):
         t = T(layer)
         if isinstance(batch, int):
@@ -79,13 +130,31 @@ def my_objective_func(layer, n_channel, batch=None):
     return inner
 
 #Returns a objective func which subtracts two obj functions
-def my_diff_objs_f(obj1, obj2):
+def my_diff_objs_f(obj1, obj2, subWeight=1.):
     def inner(T):
         t1 = obj1(T)
         t2 = obj2(T)
-        tf = t1 - t2
+        tf = t1 - subWeight*t2
         return tf
     return inner
+
+def test_obj_f(model):
+    #Init
+    param_f = lambda: param.image(128, batch=1)
+    objective_f = diversity_obj_f("mixed5a")
+
+    with tf.Graph().as_default() as graph, tf.Session().as_default() as sess:
+        T = make_vis_T(model, objective_f, param_f)
+        loss, vis_op, t_image = T("loss"), T("vis_op"), T("input")
+        tf.global_variables_initializer().run()
+        for i in range(500):
+            loss_, _ = sess.run([loss, vis_op])
+            evalLoss = loss.eval()
+            if i in [50,100,250,400,500]:
+                vis = t_image.eval()
+                img = np.hstack(vis)
+                plt.imshow(img)
+                plt.show()
 
 def make_vis_T(model, objective_f, param_f=None):
     #make original image
@@ -144,12 +213,12 @@ def runStepSess():
 def createObjective_f(layer_name, filter_idx, batch=None):
     #"mixed4a_pre_relu"
     if batch is 2:
-        obj1 = my_objective_func(layer_name, filter_idx, batch=1)
-        obj2 = my_objective_func(layer_name, filter_idx, batch=0)
+        obj1 = channel_obj_f(layer_name, filter_idx, batch=1)
+        obj2 = channel_obj_f(layer_name, filter_idx, batch=0)
         obj_f = my_diff_objs_f(obj1, obj2)
         return obj_f
     else:
-        return my_objective_func(layer_name, filter_idx, batch=None)
+        return channel_obj_f(layer_name, filter_idx, batch=None)
 
 def render_vis_yield(model, layer_name, filter_idx, show_negative=False, max_steps=10):
     with tf.Graph().as_default() as graph, tf.Session() as sess:
@@ -178,7 +247,7 @@ def render_vis_yield(model, layer_name, filter_idx, show_negative=False, max_ste
 #objective to minimize the loss on
 #param
 def render_vis(model, objective_f, param_f=None):
-    param_f=None
+    #param_f=None
     optimizer=None
     transforms=None 
     thresholds=(400,)
@@ -212,8 +281,10 @@ def render_vis(model, objective_f, param_f=None):
 def render_vis_test(model):
     """Visualize a single channel"""
     # obj = objectives.channel("mixed4a_pre_relu", 492, batch=1) - objectives.channel("mixed4a_pre_relu", 492, batch=0)
-    obj = objectives.channel("mixed4a_pre_relu", 492)
+    # obj = objectives.channel("mixed4a_pre_relu", 492)
+    param_f = lambda: param.image(128, batch=4)
+    obj = objectives.channel("mixed5a_pre_relu", 9) - 1e2*objectives.diversity("mixed5a")
     #img = render_vis(model, "mixed4a_pre_relu:476")
-    img = render_vis(model, obj)
+    img = render_vis(model, obj, param_f)
     plt.imshow(img)
     plt.show()
