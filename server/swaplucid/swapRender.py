@@ -15,6 +15,8 @@ from lucid.optvis.param.color import to_valid_rgb
 from lucid.misc.io import show
 from lucid.misc.redirected_relu_grad import redirected_relu_grad, redirected_relu6_grad
 from lucid.misc.gradient_override import gradient_override_map
+
+from .myobjectives import direction_obj
 import global_vars as G
 
 def myimagef(w, h=None, batch=None):
@@ -102,10 +104,10 @@ def diversity_render_yield(model, filter_idx, layer, n_batch=2):
     #Only diversity obj
     #objective_f = diversity_obj_f("mixed5a")
     #diff between channel obj and diversity obj
-    print("obj1=" + "mixed5a_pre_relu:" +str(filter_idx))
-    obj1 = channel_obj_f("mixed5a_pre_relu", filter_idx)
-    obj2 = diversity_obj_f("mixed5a")
-    obj_f = my_diff_objs_f(obj1, obj2, subWeight=0.01)
+    print("obj1=" + "mixed4e_pre_relu:" +str(filter_idx))
+    obj1 = channel_obj_f("mixed4e_pre_relu", filter_idx)
+    obj2 = diversity_obj_f("mixed4e")
+    obj_f = my_diff_objs_f(obj1, obj2, subWeight=100)
 
     with tf.Graph().as_default() as graph, tf.Session() as sess:
         T = make_vis_T(model, obj_f, param_f)
@@ -113,14 +115,24 @@ def diversity_render_yield(model, filter_idx, layer, n_batch=2):
         tf.global_variables_initializer().run()
         i = 1
         img = None
-        while i < 400:
+        while i < 500:
             loss_, _ = sess.run([loss, vis_op])
             vis = t_image.eval()
             img = np.hstack(vis)
             yield img
             i += 1
-
 ####################################################################################################
+
+###################################### Neurons Add Obj Func Yield #####################################
+#returns function that sums up 2 neuron objective functions
+def sum_2_neuron_obj_f(obj1, obj2, addWeight=1.):
+    def inner(T):
+        t1 = obj1(T)
+        t2 = obj2(T)
+        tf = t1 + addWeight*t2
+        return tf
+    return inner
+
 def channel_obj_f(layer, n_channel, batch=None):
     def inner(T):
         t = T(layer)
@@ -128,6 +140,34 @@ def channel_obj_f(layer, n_channel, batch=None):
             t = t[batch:batch+1]
         return tf.reduce_mean(t[...,n_channel])
     return inner
+
+def create_neuron_obj_f(neurons):
+    n0 = neurons[0]
+    n1 = neurons[1]
+    obj1 = channel_obj_f(n0['layer'], n0['filterIndex'])
+    obj2 = channel_obj_f(n1['layer'], n1['filterIndex'])
+    obj_f = sum_2_neuron_obj_f(obj1, obj2)
+    return obj_f
+
+def render_vis_neurons_yield(model, neurons, max_steps=10):
+    with tf.Graph().as_default() as graph, tf.Session() as sess:
+        batch = None
+        objective_f = create_neuron_obj_f(neurons)
+        #We need to show 2 images in the final viz, param_f modifies the initial display image
+        param_f = myimagef(128, batch=1)
+        T = make_vis_T(model, objective_f, param_f)
+        #returns a function which whe called returns a Tensor (image) after loss has been applied
+        loss, vis_op, t_image = T("loss"), T("vis_op"), T("input")
+        tf.global_variables_initializer().run()
+
+        i = 1
+        img = None
+        while i < max_steps:
+            loss_, _ = sess.run([loss, vis_op])
+            vis = t_image.eval()
+            img = np.hstack(vis)
+            yield img
+            i += 1
 
 #Returns a objective func which subtracts two obj functions
 def my_diff_objs_f(obj1, obj2, subWeight=1.):
@@ -169,13 +209,16 @@ def make_vis_T(model, objective_f, param_f=None):
     init_global_step = tf.variables_initializer([global_step])
     init_global_step.run()
 
-    #returns the tensor for the given layer while tf.sess
-    T = import_model(model, transforms_f(t_image), t_image)
+    #Whether to use the gradient override scheme
+    with gradient_override_map({'Relu': redirected_relu_grad,
+                                'Relu6': redirected_relu6_grad}):
+        #returns the tensor for the given layer while tf.sess
+        T = import_model(model, transforms_f(t_image), t_image)
     
     #calculate the loss for the tensor using objective function
     loss = objective_f(T)
 
-    vis_op = optimizer.minimize(loss, global_step=global_step)
+    vis_op = optimizer.minimize(-loss, global_step=global_step)
 
     #used for pulling out local vars while each step is teaking place 
     local_vars = locals()
@@ -220,6 +263,23 @@ def createObjective_f(layer_name, filter_idx, batch=None):
     else:
         return channel_obj_f(layer_name, filter_idx, batch=None)
 
+def render_vis_direction_yield(model, layer_name, max_steps=10):
+    with tf.Graph().as_default() as graph, tf.Session() as sess:
+        random_dir = np.random.randn(528)
+        objective_f = direction_obj(layer_name, random_dir)
+        param_f = myimagef(128, batch=1)
+        T = make_vis_T(model, objective_f, param_f)
+        loss, vis_op, t_image = T("loss"), T("vis_op"), T("input")
+        tf.global_variables_initializer().run()
+        i = 1
+        img = None
+        while i < max_steps:
+            loss_, _ = sess.run([loss, vis_op])
+            vis = t_image.eval()
+            img = np.hstack(vis)
+            yield img
+            i += 1
+
 def render_vis_yield(model, layer_name, filter_idx, show_negative=False, max_steps=10):
     with tf.Graph().as_default() as graph, tf.Session() as sess:
         batch = 2 if show_negative else None
@@ -235,13 +295,17 @@ def render_vis_yield(model, layer_name, filter_idx, show_negative=False, max_ste
 
         i = 1
         img = None
-        while i < max_steps:
-            loss_, _ = sess.run([loss, vis_op])
-            vis = t_image.eval()
-            img = np.hstack(vis)
-            yield img
-            i += 1
-
+        try:
+            while i < max_steps:
+                loss_, _ = sess.run([loss, vis_op])
+                vis = t_image.eval()
+                img = np.hstack(vis)
+                yield img
+                i += 1
+        except:
+            print("exception")
+            return
+        
 ###################################### Client Socket Yield ###########################################
 
 #objective to minimize the loss on

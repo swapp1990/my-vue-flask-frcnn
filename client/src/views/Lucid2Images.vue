@@ -7,7 +7,7 @@
         <br>
         <div class="row">
             <div v-for="t in activeThreads" class="col-sm">
-                Thread {{t.id}}, Filter Index {{t.filterIndex}}: <span>Step {{t.step}}</span>
+                Thread {{t.id}}, {{t.layer}}:{{t.filter_idx}}: <span>Step {{t.step}}</span>
                 <div v-if="t.active">
                     <div class="spinner-border text-primary" role="status">
                         <span class="sr-only">Loading...</span>
@@ -101,10 +101,25 @@ export default {
     methods: {
         initThreads() {
             // let filters = [24,67,86,123,45];
-            let filters = [24];
-            let id = 0;
+            //[426, 436, 43]
+            let filters = [426, 436, 43];
+
             //Show normal viz
-            // let config = {channel: true, diversity: false, batch: 1, negative: this.showNegative};
+            let config = {channel: true, diversity: false, batch: 1, negative: this.showNegative};
+            let id=0;
+            let layer = "mixed4d";
+            filters.forEach(f => {
+                let params = {id: id, layer: layer, filterIndex: f, active: true, step: 0};
+                this.activeThreads.push(params);
+                let style = {height: this.figHeight, width: this.figWidth};
+                let socketParam = {id: id, layer: layer, filter_idx: f, style: style, config: config};
+                console.log(socketParam);
+                this.socket.emit('startNewThread', socketParam);
+                id++;
+            });
+
+            //Show diversity Viz
+            // let config = {channel: true, diversity: true, batch: 4, negative: this.showNegative};
             // filters.forEach(f => {
             //     let params = {id: id, filterIndex: f, active: true, step: 0};
             //     this.activeThreads.push(params);
@@ -114,18 +129,36 @@ export default {
             //     id++;
             // });
 
-            //Show diversity Viz
-            let config = {channel: true, diversity: true, batch: 4, negative: this.showNegative};
-            filters.forEach(f => {
-                let params = {id: id, filterIndex: f, active: true, step: 0};
-                this.activeThreads.push(params);
-                let socketParams = this.setSocketParams(config, id, f);
-                console.log(socketParams);
-                this.socket.emit('startNewThread', socketParams);
-                id++;
-            });
+            //Show Directional Layer
+            //this.directionVizThread();
 
+            //Show Individual Neurons
+            // this.neuronsVizThread();  
+        },
+        directionVizThread() {
+            let id = 0;
+            let config = {channel: true, diversity: false, batch: 1, negative: this.showNegative};
+            let style = {height: this.figHeight, width: this.figWidth};
 
+            let socketParam = {id: id, layer: 'mixed4d_pre_relu', filter_idx: 0, style: style, config: config};
+            this.socket.emit('startNewThread', socketParam);
+            this.activeThreads.push({id: id, layer: 'l', filter_idx: '111', active: true, step: 0});
+        },
+        neuronsVizThread() {
+            let id = 0;
+            let config = {channel: true, diversity: false, batch: 1, negative: this.showNegative};
+            let neuron1 = {layer: 'mixed4b_pre_relu', filterIndex: 111};
+            let neuron2 = {layer: 'mixed4a_pre_relu', filterIndex: 476};
+            let neurons = []
+            neurons.push(neuron1)
+            neurons.push(neuron2)
+
+            let style = {height: this.figHeight, width: this.figWidth};
+            // let socketParam = {id: id, layer: neuron.layer, filter_idx: neuron.filterIndex, style: style, config: config};
+            let operation = 'add';
+            let socketParam = {id: id, neurons: neurons, style: style, config: config, obj_op: operation};
+            this.socket.emit('startNewThread', socketParam);
+            this.activeThreads.push({id: id, layer: 'l', filter_idx: '111', active: true, step: 0});
         },
         setSocketParams(config, id, channel_index) {
             let style = {height: this.figHeight, width: this.figWidth};

@@ -23,7 +23,7 @@ from flask_cors import CORS
 from flask import Response
 from flask_socketio import SocketIO, emit
 
-from swaplucid import swapRender
+from swaplucid import swapRender, interpretRender
 import global_vars as G
 
 # instantiate the app
@@ -33,6 +33,8 @@ socketio = SocketIO(app, cors_allowed_origins="*", logger=True, async_mode='thre
 #socketio = SocketIO(app, cors_allowed_origins="*")
 # enable CORS
 CORS(app, resources={r'/*': {'origins': '*'}}) 
+log = logging.getLogger('werkzeug')
+log.setLevel(logging.ERROR)
 
 def convertImgToFig(img, style=None):
     figHeight = 2
@@ -54,7 +56,7 @@ def convertImgToFig(img, style=None):
 
 ######################################### Socket #############################################
 #Init the type of generator for image viz.
-def initGenerator(filter_idx, config):
+def initGenerator(layer_name, filter_idx, config):
     print("config ", config)
     model = models.InceptionV1()
     model.load_graphdef()
@@ -62,17 +64,29 @@ def initGenerator(filter_idx, config):
 
     show_negative = config['negative']
     n_batch = config['batch']
-    layer_name = "mixed5a"
     img_gen = None
     #The original 'render_vis'
     if config['diversity']:
         img_gen = swapRender.diversity_render_yield(model, filter_idx, layer_name, n_batch=n_batch)
     else:
-        img_gen = swapRender.render_vis_yield(model, "mixed5a_pre_relu", filter_idx, show_negative=show_negative, max_steps=500)
-    #Generator for testing deversity objective
-    layer_name = "mixed5a"
-
+        #Generator for testing deversity objective
+        img_gen = swapRender.render_vis_yield(model, layer_name, filter_idx, show_negative=show_negative, max_steps=500)
+        #img_gen = swapRender.render_vis_direction_yield(model, layer_name, max_steps=500)
     return img_gen
+
+def initGenerator2(neurons, obj_op, config):
+    model = models.InceptionV1()
+    model.load_graphdef()
+    n_batch = config['batch']
+    img_gen = swapRender.render_vis_neurons_yield(model, neurons, max_steps=500)
+    return img_gen
+
+@socketio.on('connect')
+def connect():
+    print("reset")
+    for t in G.active_threads:
+        t.stop()
+    G.active_threads.clear()
 
 @socketio.on('startLucid')
 def startLucid(filter_idx=0):
@@ -107,10 +121,16 @@ class Worker(threading.Thread):
         self.mailbox = queue.Queue()
         self.id = params["id"]
         self.step = 0
-        self.filter_idx = params["filter_idx"]
         self.style = params["style"]
         self.config = params["config"]
-        self.imgGenerator = initGenerator(self.filter_idx, self.config)
+        self.imgGenerator = None
+        # For layer:idx
+        self.layer_name = params["layer"]
+        self.filter_idx = params["filter_idx"]
+        self.imgGenerator = initGenerator(self.layer_name, self.filter_idx, self.config)
+
+        # For 2 Neurons (layer:idx)
+        # self.imgGenerator = initGenerator2(params["neurons"], params["obj_op"], self.config)
         active_queues.append(self.mailbox)
                     
     def doWork(self):
@@ -144,11 +164,14 @@ class Worker(threading.Thread):
         return self.id
 
     def stop(self):
-        outsideThreadCallTest()
-        socketio.emit('test', self.id)
+        # outsideThreadCallTest()
+        # socketio.emit('test', self.id)
         print("stop thread", self.id)
-        active_queues.remove(self.mailbox)
-        socketio.emit('threadFinished', self.id)
+        self.imgGenerator = None
+        print(len(active_queues))
+        if len(active_queues) > 0:
+            active_queues.remove(self.mailbox)
+            socketio.emit('threadFinished', self.id)
         self.mailbox.put({"action":"stop"})
         self.join()
 
@@ -158,14 +181,12 @@ def broadcast_event(data):
 
 @socketio.on('startNewThread')
 def startNewThread(params):
-    print(params)
+    #print(params)
     thread = Worker(params)
     thread.start()
-    print("start thread " + str(params['id']) + " filter " + str(params['filter_idx']))
+    print("start thread " + str(params['id']))
     G.active_threads.append(thread)
-    # time.sleep(0.5)
-    # msg = {"id": params['id'], "action": "perform"}
-    # broadcast_event(msg)
+    emit("threadStarted", params['id'])
 
 @socketio.on('perform')
 def perform(id):
@@ -184,7 +205,8 @@ def initTest():
     print('init')
     model = models.InceptionV1()
     model.load_graphdef()
-    swapRender.test_obj_f(model)
+    interpretRender.channel_attr()
+    #swapRender.test_obj_f(model)
     # swapRender.render_vis_test(model)
     # imgGenerator = initGenerator(42)
     # img = next(imgGenerator)

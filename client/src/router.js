@@ -10,6 +10,8 @@ import Lucid2Test from './views/Lucid2Images.vue';
 import ThreadTest from './views/ThreadTest.vue';
 import Saliency from './views/Saliency.vue';
 import IntermediateStepView from './views/IntermediateStepView.vue';
+import FeatureViz from './views/FeatureViz.vue';
+import SingleFeat from './views/SingleFeatureViz.vue';
 
 Vue.use(Router);
 
@@ -19,7 +21,7 @@ export default new Router({
   routes: [
     {
       path: '/',
-      component: Lucid2Test
+      component: SingleFeat
     },
     {
       path: '/obj',
