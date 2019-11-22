@@ -1,37 +1,15 @@
 <template>
     <div>
-        <!-- <div class="row">
-            <div class="mlp_div" style="width: 800px; height: 400px;"></div>
-            <div class="mlp_div1" style="width: 800px; height: 400px;"></div>
-        </div> -->
         <button @click="initThreads()">Start Threads</button>
         <div v-for="t in activeThreads" class="col-sm">
             <viz-panel :t="t"
                         v-on:createThread="onCreateThread"
                         v-on:perform="onPerform"
                         v-on:pause="onPause"
-                        v-on:stop="onStop"></viz-panel>
+                        v-on:stop="onStop"
+                        v-on:save="onSave"
+                        v-on:general="onGeneral"></viz-panel>
         </div>
-        <!-- <br>
-        <input type="checkbox" id="checkbox" v-model="showNegative">
-        <label for="checkbox">Show Negative: {{ showNegative }}</label>
-        <button @click="initThreads()">Start Threads</button>
-        <br>
-        <div class="row">
-            <div v-for="t in activeThreads" class="col-sm">
-                <viz-panel :t="t"></viz-panel> -->
-                <!-- Thread {{t.id}}, {{t.layer}}:{{t.filter_idx}}
-                <br>
-                Step: {{t.step}}
-                <br>
-                <div class="spinner-border text-primary" role="status">
-                    <span class="sr-only">Loading...</span>
-                </div>
-                <button @click="stopThread(t.id)">Stop</button>
-                <button @click="perform(t.id)">Perform</button>
-                <div class="mlp_div" :id="'mlp_fig_'+t.id" :style="figStyle"></div> -->
-            <!-- </div>
-        </div> -->
     </div>
 </template>
 
@@ -48,32 +26,20 @@ export default {
         VizPanel: VizPanel
     },
     computed: {
-        figStyle() {
-            return 'width: ' + this.figWidth*2 + 'px; height: ' + this.figHeight + 'px;';
-        }
+        
     },
     data() {
         return {
             socket: null,
             step: 0,
-            threadC: 0,
-            selected: 20,
             stopped: false,
-            prevStepImages: [],
-            imagenet_clss: [
-                { text: 'stingray', value: 6 },
-                { text: 'magpie', value: 18 },
-                { text: 'ouzel', value: 20 },
-                { text: 'bullfrog', value:30},
-                { text: 'turtle', value:37},
-                { text: 'snake', value:55},
-                { text: 'peacock', value:84}],
-            disableLive: false,
             activeThreads: [],
             stepLimit: 500,
-            figHeight: 400,
-            figWidth: 400,
-            showNegative: false
+            figHeight: 300,
+            figWidth: 300,
+            currFilterIdx: -1,
+            showNegative: false,
+            showArchived: false
         }
     },
     mounted(){
@@ -89,12 +55,15 @@ export default {
             });
             this.socket.on('threadFinished', (id) => {
                 console.log('threadFinished', id);
-                // this.removeActiveThread(id);
-                this.stopActiveThread(id);
+                this.removeActiveThread(id);
             });
             this.socket.on('workFinished', (obj) => {
                 // console.log('workFinished', obj);
-                this.doClientWork(obj);
+                if(obj.notFound) {
+                    console.log("Not Found");
+                } else {
+                    this.doClientWork(obj);
+                }
             });
         });
     },
@@ -102,11 +71,7 @@ export default {
         initThreads() {
             //Show normal viz
             let id=0;
-            
             this.activeThreads.push({id: 0, step: 0});
-            // let socketThreadParam = {id: id, layer: layer, filter_idx: filter_idx, step:0, style: style, config: config};
-            // this.activeThreads.push(socketThreadParam);
-            // this.socket.emit('startNewThread', socketThreadParam);
         },
         directionVizThread() {
             let id = 0;
@@ -149,20 +114,34 @@ export default {
                     if(!selectedThread.paused) {
                         this.socket.emit('perform', obj.id);  
                     }  
-                }, 1000);
+                }, 200);
             }
         },
-        //Events
-        onCreateThread(panelParam) {
+        startNewThread(panelParam) {
             console.log(panelParam);
             let style = {height: this.figHeight, width: this.figWidth};
             panelParam.style = style;
             this.socket.emit('startNewThread', panelParam);
+            //Save current filter index to check if changed in the middle
+            this.currFilterIdx = panelParam.filter_idx;
         },
-        onPerform(id) {
-            let selectedThread = this.findActiveThread(id);
-            selectedThread.paused = false;
-            this.socket.emit('perform', id);
+        //Events
+        onCreateThread(panelParam) {
+            this.startNewThread(panelParam);
+        },
+        onPerform(msg) {
+            let selectedThread = this.findActiveThread(msg.id);
+            if(this.currFilterIdx !== msg.f) {
+                console.log("Filter index changed. Modify");
+                this.currFilterIdx = msg.filter_idx;
+                let selectedThread = this.findActiveThread(msg.id);
+                selectedThread.step = 0;
+                this.socket.emit('modify', msg.panelParam);
+                selectedThread.paused = false;
+            } else {
+                selectedThread.paused = false;
+                this.socket.emit('perform', msg.id);
+            }
         },
         onPause(id) {
             let selectedThread = this.findActiveThread(id);
@@ -171,9 +150,26 @@ export default {
         onStop(id) {
             this.socket.emit('stopThread', id);
         },
-        stopThread(id) {
-            this.socket.emit('stopThread', id);
-            this.removeActiveThread(id);
+        onSave(id) {
+            let selectedThread = this.findActiveThread(id);
+            selectedThread.paused = true;
+            this.socket.emit('save', id);
+        },
+        onGeneral(msg) {
+            let id = msg.id;
+            if(msg.action == "load") {
+                let selectedThread = this.findActiveThread(id);
+                selectedThread.paused = true;
+                let content = {id: id, filter_idx: this.currFilterIdx};
+                this.socket.emit(msg.action, content);
+                this.showArchived = true;
+            } else if(msg.action == "filterChange") {
+                if(this.showArchived) {
+                    console.log(msg.filter_idx);
+                    let content = {id: id, filter_idx: msg.filter_idx};
+                    this.socket.emit("load", content);
+                }
+            }
         },
         findActiveThread(id) {
             var index = this.activeThreads.map(function(e) { return e.id; }).indexOf(id);
@@ -181,12 +177,6 @@ export default {
                 return this.activeThreads[id];
             else 
                 return undefined
-        },
-        stopActiveThread(id) {
-            var index = this.activeThreads.map(function(e) { return e.id; }).indexOf(id);
-            if(this.activeThreads[index]) {
-                this.activeThreads[index].active = false;
-            }
         },
         removeActiveThread(id) {
             var index = this.activeThreads.map(function(e) { return e.id; }).indexOf(id);

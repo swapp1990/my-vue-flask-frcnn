@@ -6,7 +6,7 @@ import json
 from mpld3 import plugins
 import time
 import matplotlib.cm as cm
-from scipy.misc import imread, imresize
+from scipy.misc import imread, imresize, imsave
 import re
 import imageio
 import tensorflow as tf

@@ -9,6 +9,8 @@ import queue
 from matplotlib import pyplot as plt
 import numpy as np
 import tensorflow as tf
+from scipy.misc import imread, imresize, imsave
+import imageio
 
 import lucid.modelzoo.vision_models as models
 from lucid.misc.io import show
@@ -49,7 +51,7 @@ def convertImgToFig(img, style=None):
     ax.imshow(img)
     #(200, 200) size
     #print(figWidth, figHeight)
-    # plt.gcf().set_size_inches(figWidth, figHeight)
+    plt.gcf().set_size_inches(figWidth, figHeight)
     #plt.show()
     mp_fig = mpld3.fig_to_html(fig)
     return mp_fig
@@ -126,7 +128,7 @@ class Worker(threading.Thread):
         self.imgGenerator = None
         # For layer:idx
         self.layer_name = params["layer"]
-        self.filter_idx = params["filter_idx"]
+        self.filter_idx = int(params["filter_idx"])
         self.imgGenerator = initGenerator(self.layer_name, self.filter_idx, self.config)
 
         # For 2 Neurons (layer:idx)
@@ -137,6 +139,37 @@ class Worker(threading.Thread):
         # socketio.emit('test', self.id, broadcast=True)
         img = next(self.imgGenerator)
         #print(img.shape)
+        fig = convertImgToFig(img, self.style)
+        obj = {"id": self.id, "step": self.step, "fig": fig}
+        socketio.emit('workFinished', obj)
+        self.step = self.step+1
+
+    def saveImg(self):
+        img = next(self.imgGenerator)
+        filename = self.layer_name + "_" + str(self.filter_idx) + "_" + str(img.shape[0])
+        filename += ".png"
+        imageio.imwrite('savedimgs/'+filename, img)
+
+    def loadImg(self, params):
+        currFilterIdx = params["filter_idx"]
+        filename = self.layer_name + "_" + str(currFilterIdx) + "_" + str(128)
+        filename += ".png"
+        try:
+            img = imageio.imread('savedimgs/'+filename, as_gray=False, pilmode="RGB")
+            fig = convertImgToFig(img, self.style)
+            obj = {"id": self.id, "step": self.step, "fig": fig, "saved": True}
+            socketio.emit('workFinished', obj)
+        except:
+            obj = {"id": self.id, "notFound": True}
+            socketio.emit('workFinished', obj)
+
+    def modifyThread(self, params):
+        print("modifed ", params) 
+        self.filter_idx = int(params["filter_idx"])
+        self.step = 0
+
+        self.imgGenerator = initGenerator(self.layer_name, self.filter_idx, self.config)
+        img = next(self.imgGenerator)
         fig = convertImgToFig(img, self.style)
         obj = {"id": self.id, "step": self.step, "fig": fig}
         socketio.emit('workFinished', obj)
@@ -158,7 +191,14 @@ class Worker(threading.Thread):
                     #     return
             #print(self, 'received a message:', data['id'])
             if self.id == data['id']:
-                self.doWork()
+                if data['action'] == 'perform':
+                    self.doWork()
+                elif data['action'] == 'save':
+                    self.saveImg()
+                elif data['action'] == 'load':
+                    self.loadImg(data["params"])
+                elif data['action'] == 'modify':
+                    self.modifyThread(data['modifiedParams'])
     
     def getId(self):
         return self.id
@@ -193,12 +233,30 @@ def perform(id):
     msg = {"id": id, "action": "perform"}
     broadcast_event(msg)
 
+@socketio.on('modify')
+def modify(params):
+    print("modify")
+    msg = {"id": params["id"], "action": "modify", "modifiedParams": params}
+    broadcast_event(msg)
+
 @socketio.on('stopThread')
 def stopThread(id):
     for t in G.active_threads:
         if id == t.getId():
             #print("active_queues", len(active_queues))
             t.stop()
+
+@socketio.on('save')
+def save(id):
+    msg = {"id": id, "action": "save"}
+    broadcast_event(msg)
+
+@socketio.on('load')
+def load(params):
+    print('Load saved img')
+    msg = {"id": params["id"], "action": "load", "params": params}
+    broadcast_event(msg)
+
 ######################################################################################
 
 def initTest():

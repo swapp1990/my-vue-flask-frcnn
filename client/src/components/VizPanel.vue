@@ -1,6 +1,8 @@
 <template>
     <div class="row">
         <div class="col-sm-12">
+            <input type="number" v-model="filter_idx" @change="onFilterChange">
+            <br>
             Thread {{t.id}}, {{layer}}:{{filter_idx}}
             <br>
             Step: {{t.step}}
@@ -8,6 +10,8 @@
             <button v-if="!performing" class="btn" @click="perform(t.id)"><i class="icon-play"></i></button>
             <button v-if="performing" class="btn" @click="perform(t.id)"><i class="icon-pause"></i></button>
             <button class="btn" @click="stop(t.id)"><i class="icon-stop"></i></button>
+            <button class="btn" @click="save(t.id)"><i class="icon-save"></i></button>
+            <button class="btn" @click="load(t.id)"><i class="icon-archive"></i></button>
         </div>
         <div class="col-sm-12">
             <div class="mlp_div" :id="'mlp_fig_'+t.id" :style="figStyle"></div>
@@ -23,8 +27,8 @@ export default {
         return {
             started: false,
             performing: false,
-            pwidth: 256,
-            pheight: 256,
+            pwidth: 300,
+            pheight: 300,
             config: {channel: true, diversity: false, batch: 1, negative: false},
             layer: "mixed4d",
             filter_idx: 423,
@@ -62,7 +66,9 @@ export default {
             } else {
                 this.performing = !this.performing;
                 if(this.performing) {
-                    this.$emit("perform", id);
+                    let panelParam = {id: id, layer: this.layer, filter_idx: this.filter_idx, step:0, config: this.config}
+                    let performParam = {id: id, f: this.filter_idx, panelParam: panelParam};
+                    this.$emit("perform", performParam);
                 } else {
                     this.$emit("pause", id);
                 }
@@ -71,6 +77,19 @@ export default {
         stop(id) {
             this.performing = false;
             this.$emit("stop", id);
+        },
+        save(id) {
+            this.performing = false;
+            this.$emit("save", id);
+        },
+        load(id) {
+            this.performing = false;
+            let msg = {id: id, action: "load"};
+            this.$emit("general", msg);
+        },
+        onFilterChange() {
+            let msg = {id: this.t.id, action: "filterChange", filter_idx: this.filter_idx};
+            this.$emit("general", msg);
         },
         showFig(fig) {
             // console.log(fig);
