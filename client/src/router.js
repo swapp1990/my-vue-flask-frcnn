@@ -12,6 +12,8 @@ import Saliency from './views/Saliency.vue';
 import IntermediateStepView from './views/IntermediateStepView.vue';
 import FeatureViz from './views/FeatureViz.vue';
 import SingleFeat from './views/SingleFeatureViz.vue';
+import FilteredTabs from './views/workingUiSamples/FilteredImageTabs.vue'
+import InstaView from './views/workingUiSamples/InstaView.vue';
 
 Vue.use(Router);
 
@@ -21,7 +23,7 @@ export default new Router({
   routes: [
     {
       path: '/',
-      component: SingleFeat
+      component: FilteredTabs
     },
     {
       path: '/obj',
