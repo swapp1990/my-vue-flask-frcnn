@@ -69,11 +69,14 @@ def initGenerator(layer_name, filter_idx, config):
     img_gen = None
     #The original 'render_vis'
     if config['diversity']:
+        #Generator for deversity objective
         img_gen = swapRender.diversity_render_yield(model, filter_idx, layer_name, n_batch=n_batch)
     else:
-        #Generator for testing deversity objective
-        img_gen = swapRender.render_vis_yield(model, layer_name, filter_idx, show_negative=show_negative, max_steps=500)
-        #img_gen = swapRender.render_vis_direction_yield(model, layer_name, max_steps=500)
+        #Generator for default objective
+        regul_config = None
+        if 'regul' in config:
+            regul_config = config['regul']
+        img_gen = swapRender.render_vis_yield(model, layer_name, filter_idx, show_negative=show_negative, use_regularizer=config['use_regularizer'], regularizer_params=regul_config, max_steps=2000)
     return img_gen
 
 def initGenerator2(neurons, obj_op, config):
@@ -129,6 +132,8 @@ class Worker(threading.Thread):
         # For layer:idx
         self.layer_name = params["layer"]
         self.filter_idx = int(params["filter_idx"])
+        inp = self.layer_name + ":" + str(params["filter_idx"])
+        print("init worker "+ inp)
         self.imgGenerator = initGenerator(self.layer_name, self.filter_idx, self.config)
 
         # For 2 Neurons (layer:idx)
@@ -137,12 +142,16 @@ class Worker(threading.Thread):
                     
     def doWork(self):
         # socketio.emit('test', self.id, broadcast=True)
-        img = next(self.imgGenerator)
-        #print(img.shape)
-        fig = convertImgToFig(img, self.style)
-        obj = {"id": self.id, "step": self.step, "fig": fig}
-        socketio.emit('workFinished', obj)
-        self.step = self.step+1
+        try:
+            img = next(self.imgGenerator)
+            fig = convertImgToFig(img, self.style)
+            obj = {"id": self.id, "step": self.step, "fig": fig}
+            socketio.emit('workFinished', obj)
+            self.step = self.step+1
+        except:
+            print("Emit Generator Exception to Client")
+            obj = {"id": self.id, "step": self.step, "exception": True}
+            socketio.emit('workFinished', obj)
 
     def saveImg(self):
         img = next(self.imgGenerator)

@@ -16,18 +16,18 @@ from lucid.misc.io import show
 from lucid.misc.redirected_relu_grad import redirected_relu_grad, redirected_relu6_grad
 from lucid.misc.gradient_override import gradient_override_map
 
-from .myobjectives import direction_obj
+from .myobjectives import direction_obj, channel_obj_f, L1, total_variation, blur_input_each_step, sum_objs_f, mul_obj_f
 import global_vars as G
 
 def myimagef(w, h=None, batch=None):
     h = h or w
     batch = batch or 1
     shape = [batch, h, w, 3]
-    init_val = np.random.normal(size=shape, scale=0.01).astype(np.float32)
-    pixel_image = tf.Variable(init_val)
-    param_f = pixel_image
-    #t = param_f(shape, sd=None)
-    t = param_f
+    #init_val = np.random.normal(size=shape, scale=0.01).astype(np.float32)
+    #pixel_image = tf.Variable(init_val)
+    param_f = fft_image
+    t = param_f(shape, sd=None)
+    #t = param_f
     output = to_valid_rgb(t[..., :3], decorrelate=True, sigmoid=True)
     return output
 
@@ -131,14 +131,6 @@ def sum_2_neuron_obj_f(obj1, obj2, addWeight=1.):
         t2 = obj2(T)
         tf = t1 + addWeight*t2
         return tf
-    return inner
-
-def channel_obj_f(layer, n_channel, batch=None):
-    def inner(T):
-        t = T(layer)
-        if isinstance(batch, int):
-            t = t[batch:batch+1]
-        return tf.reduce_mean(t[...,n_channel])
     return inner
 
 def create_neuron_obj_f(neurons):
@@ -263,6 +255,28 @@ def createObjective_f(layer_name, filter_idx, batch=None):
     else:
         return channel_obj_f(layer_name, filter_idx, batch=None)
 
+#Only for batch 1 for now
+def createObjWithRegularization(layer_name, filter_idx, params=None):
+    obj1 = channel_obj_f(layer_name, filter_idx, batch=None)
+    #penalize     #obj2 = L1(constant=.5)
+    L1_const = .5
+    L1_weight = -0.05
+    TV_weight = -0.25
+    Blur_weight = 0.
+    if params is not None:
+        L1_const = float(params["L1_const"])
+        L1_weight = float(params["L1_weight"])
+        TV_weight = float(params["TV_weight"])
+        Blur_weight = float(params["Blur_weight"])
+
+    print(L1_const, L1_weight, TV_weight, Blur_weight)
+    obj2 = mul_obj_f(L1(constant=L1_const), L1_weight)
+    obj3 = mul_obj_f(total_variation(), TV_weight)
+    #obj4 = mul_obj_f(blur_input_each_step(), Blur_weight)
+    objs = [obj1, obj2, obj3]
+    obj_f = sum_objs_f(objs)
+    return obj_f
+
 def render_vis_direction_yield(model, layer_name, max_steps=10):
     with tf.Graph().as_default() as graph, tf.Session() as sess:
         random_dir = np.random.randn(528)
@@ -280,10 +294,14 @@ def render_vis_direction_yield(model, layer_name, max_steps=10):
             yield img
             i += 1
 
-def render_vis_yield(model, layer_name, filter_idx, show_negative=False, max_steps=10):
+def render_vis_yield(model, layer_name, filter_idx, show_negative=False, use_regularizer=False, regularizer_params=None, max_steps=10):
     with tf.Graph().as_default() as graph, tf.Session() as sess:
         batch = 2 if show_negative else None
-        objective_f = createObjective_f(layer_name, filter_idx, batch)
+        if use_regularizer:
+            objective_f = createObjWithRegularization(layer_name, filter_idx, regularizer_params)
+        else:
+            objective_f = createObjective_f(layer_name, filter_idx, batch)
+
         #We need to show 2 images in the final viz, param_f modifies the initial display image
         param_f = None
         if show_negative:
@@ -303,9 +321,12 @@ def render_vis_yield(model, layer_name, filter_idx, show_negative=False, max_ste
                 yield img
                 i += 1
         except:
-            print("exception")
+            print("Exception in Generator")
             return
-        
+        finally:
+            print("Generator Ended")
+            return
+            
 ###################################### Client Socket Yield ###########################################
 
 #objective to minimize the loss on

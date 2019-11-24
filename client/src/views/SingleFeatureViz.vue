@@ -34,7 +34,7 @@ export default {
             step: 0,
             stopped: false,
             activeThreads: [],
-            stepLimit: 500,
+            stepLimit: 2005,
             figHeight: 300,
             figWidth: 300,
             currFilterIdx: -1,
@@ -61,6 +61,10 @@ export default {
                 // console.log('workFinished', obj);
                 if(obj.notFound) {
                     console.log("Not Found");
+                } else if(obj.exception) {
+                    //General Exception returned to Thread to handle what to do when thread receives exception from work.
+                    console.log("Got Exception");
+                    this.handleWorkException(obj.id);
                 } else {
                     this.doClientWork(obj);
                 }
@@ -108,13 +112,16 @@ export default {
             let selectedThread = this.findActiveThread(obj.id);
             selectedThread.step += 1;
             selectedThread.figImg = imgData;
-
+            if(selectedThread.step % 100 == 0) {
+                this.socket.emit('save', obj.id);
+                console.log("Image saved");
+            }
             if(selectedThread.step < this.stepLimit) {
                 setTimeout(() => {
                     if(!selectedThread.paused) {
                         this.socket.emit('perform', obj.id);  
                     }  
-                }, 200);
+                }, 100);
             }
         },
         startNewThread(panelParam) {
@@ -170,6 +177,14 @@ export default {
                     this.socket.emit("load", content);
                 }
             }
+        },
+        //Thread methods
+        handleWorkException(id) {
+            let selectedThread = this.findActiveThread(id);
+            // selectedThread.paused = true;
+            console.log(this.activeThreads[0]);
+            this.activeThreads[0] = {id: selectedThread.id, figImg: selectedThread.figImg, step: selectedThread.step, paused: true};
+            console.log(this.activeThreads);
         },
         findActiveThread(id) {
             var index = this.activeThreads.map(function(e) { return e.id; }).indexOf(id);

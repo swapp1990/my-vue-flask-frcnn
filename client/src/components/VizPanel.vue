@@ -1,11 +1,49 @@
 <template>
     <div class="row">
         <div class="col-sm-12">
-            <input type="number" v-model="filter_idx" @change="onFilterChange">
+            <hr>
+            <select v-model="layer">
+                <option disabled value="">Select Layer: </option>
+                <option v-for="l in inception_layers" v-bind:value="l.text">{{l.text}}</option>
+            </select>
             <br>
+            <div class="input-group half">
+                <div class="input-group-prepend">
+                    <span class="input-group-text" id="">Filter Index</span>
+                </div>
+                <input type="number" class="form-control" v-model="filter_idx" @change="onFilterChange">
+            </div>
+            <br>
+            Regularizer <input type="checkbox" v-model="config.use_regularizer">
+            <div v-if="config.use_regularizer">
+                <div class="input-group">
+                    <div class="input-group-prepend">
+                        <span class="input-group-text" id="">L1 (const & weight)</span>
+                    </div>
+                    <input type="number" step="0.1" class="form-control" v-model="config.regul.L1_const">
+                    <input type="number" step="0.01" class="form-control" v-model="config.regul.L1_weight">
+                </div>
+                <div class="input-group half">
+                    <div class="input-group-prepend">
+                        <span class="input-group-text" id="">Total Variation (weight)</span>
+                    </div>
+                    <input type="number" step="0.25" min="-1" max="0" class="form-control" v-model="config.regul.TV_weight">
+                </div>
+                <div class="input-group half">
+                    <div class="input-group-prepend">
+                        <span class="input-group-text" id="">Blur Input (weight)</span>
+                    </div>
+                    <input type="number" step="0.01"  max="0" class="form-control" v-model="config.regul.Blur_weight">
+                </div>
+            </div>
+            <hr>
             Thread {{t.id}}, {{layer}}:{{filter_idx}}
             <br>
             Step: {{t.step}}
+            <br>
+            <label for="checkbox">Use regularizer: {{ config.use_regularizer }}</label>
+            <br>
+            {{config.regul}}
             <br>
             <button v-if="!performing" class="btn" @click="perform(t.id)"><i class="icon-play"></i></button>
             <button v-if="performing" class="btn" @click="perform(t.id)"><i class="icon-pause"></i></button>
@@ -23,15 +61,40 @@ import $ from 'jquery'
 export default {
     name: "VizPanel",
     props: ["t"],
+    watch: {
+      't.paused': { 
+        handler(n, o) {
+            console.log(n);
+        },
+        deep: true,
+        immediate: true
+      }
+    },
     data() {
         return {
             started: false,
             performing: false,
             pwidth: 300,
             pheight: 300,
-            config: {channel: true, diversity: false, batch: 1, negative: false},
-            layer: "mixed4d",
-            filter_idx: 423,
+            config: {
+                channel: true, 
+                diversity: false, 
+                batch: 1, 
+                negative: false,
+                use_regularizer: true,
+                regul: {
+                    L1_const: .5,
+                    L1_weight: -0.05,
+                    TV_weight: -0.25,
+                    Blur_weight: 0,
+                }
+            },
+            inception_layers: [
+                { text: 'mixed4d'},
+                { text: 'mixed4b_pre_relu'}
+            ],
+            layer: "mixed4b_pre_relu",
+            filter_idx: 452,
         }
     },
     computed: {
@@ -106,6 +169,9 @@ export default {
 }
 </script>
 <style scoped>
+.half {
+  width: 50%;
+}
 .mlp_div {
     background-color: aqua;
 }
