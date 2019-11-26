@@ -5,7 +5,9 @@ import App from './App.vue';
 import router from './router';
 import VueSocketIO from 'vue-socket.io'
 import { store } from './store'
+import { ResizeObserver } from 'vue-resize'
 
+Vue.component('resize-observer', ResizeObserver)
 Vue.use(BootstrapVue);
 // Vue.use(new VueSocketIO({
 //   debug: true,
