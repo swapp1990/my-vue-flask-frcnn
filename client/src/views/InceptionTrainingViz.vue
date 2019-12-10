@@ -14,8 +14,6 @@
                 <img v-bind:src="'data:image/jpeg;base64,'+imgB" />
             </div>
         </div>
-
-        
         <hr>
     </div>
 </template>
@@ -23,12 +21,10 @@
 <script>
 import {mapGetters} from 'vuex'
 import $ from 'jquery'
-import VizPanelSimple from '@/components/VizPanelSimple'
 
 export default {
     name: "InceptionTrain",
     components: {
-        VizPanelSimple: VizPanelSimple
     },
     computed: {
 

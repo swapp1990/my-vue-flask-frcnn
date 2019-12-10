@@ -27,9 +27,6 @@ from keras.layers import Input, Dense, Dropout
 from keras.applications.inception_v3 import InceptionV3
 from keras.models import load_model
 
-from swaplucid import swapRender
-import global_vars as G
-
 # instantiate the app
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'secret!'
@@ -97,27 +94,25 @@ def showAllChannelsInFeatureMap(name, fm):
             display_grid[col*size:(col+1)*size, row*size:(row+1)*size] = channel_img
     
     scale = 1./size
-    print("size " + str(size) + " scale" + str(scale))
+    #print("size " + str(size) + " scale" + str(scale))
     fig = plt.figure(figsize=(scale*display_grid.shape[1], scale*display_grid.shape[0]))
     ax = fig.add_subplot(111)
     ax.set_title(name)
     ax.set_xticks([])
     ax.set_yticks([])
     ax.imshow(display_grid, cmap='plasma')
-    #print(scale*display_grid.shape[1], scale*display_grid.shape[0])
     #plt.show()
     # mp_fig = mpld3.fig_to_html(fig)
     mp_fig = mpld3.fig_to_dict(fig)
     return mp_fig
-    #plt.show()
 
 def initTest():
     model = load_model('inceptionv3_flowers.h5')
-    #print(model.summary())
+    print(model.summary())
     layer_outputs = [l.output for l in model.layers[:50]][1:]
     test_img = 'daisy.jpg'
     img = image.load_img(test_img, target_size=(IMG_SIZE[0], IMG_SIZE[1]))
-    #plotImg(img)
+    plotImg(img)
     img_t = image.img_to_array(img)
     img_t = np.expand_dims(img_t, axis=0)
     img_t /= 255.
