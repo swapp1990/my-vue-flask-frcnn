@@ -1,20 +1,36 @@
 <template>
     <div>
-        <hr>
-        <select v-model="selectedLayer">
-            <option disabled value="">Select Layer: </option>
-            <option v-for="l in inception_layers" v-bind:value="l.i">{{l.name}}</option>
-        </select>
-        <br>
-        <button @click="getFeatureMaps()"><i class="icon-plus"></i></button>
-        <hr>
-        <div v-for="(imgB,i) in imageBytesArr">
-            <span>{{textArr[i]}}</span>
-            <div v-if="imgB" class="landscape">
-                <img v-bind:src="'data:image/jpeg;base64,'+imgB" />
+        <button :class="getConnectClass()" @click="connectSocket()"><i class="icon-magnet"></i></button>
+        <div v-if="connected">
+            <hr>
+            <div>
+                <span v-for="f in imgNames">
+                    <button @click="changeSampleImg(f)"> {{f}}</button>
+                </span>
             </div>
+            <div>
+                <button @click="getAllActivations()"> All Activations</button>
+            </div>
+            <div>
+                <select v-model="selectedLayer">
+                    <option disabled value="">Select Layer: </option>
+                    <option v-for="l in inception_layers" v-bind:value="l.i">{{l.name}}</option>
+                </select>
+                <button @click="getFeatureMaps()"><i class="icon-plus"></i></button>
+            </div>
+            <hr>
+            <div v-if="isLoading" class="spinner-grow" role="status">
+                <span class="sr-only">Loading...</span>
+            </div>
+            <div v-for="(imgB,i) in imageBytesArr">
+                <button @click="removeFM(i)"><i class="icon-remove"></i></button>
+                <span>{{textArr[i]}}</span>
+                <div v-if="imgB" class="landscape">
+                    <img v-bind:src="'data:image/jpeg;base64,'+imgB" />
+                </div>
+            </div>
+            <hr>
         </div>
-        <hr>
     </div>
 </template>
 
@@ -31,6 +47,11 @@ export default {
     },
     data() {
         return {
+            //Socket
+            connected: false,
+            isLoading: false,
+            //Inception
+            imgNames: ['daisy', 'dandelion', 'rose', 'sunflower', 'tulip'],
             inception_layers: [],
             currId: 0,
             selectedLayer: null,
@@ -39,62 +60,106 @@ export default {
         }
     },
     mounted(){
-        this.socket = io.connect('http://127.0.0.1:5000');
-        this.socket.on('connect',()=>{
-            console.log("connected");
-            this.onConnected();
-            this.socket.on('test', (id) => {
-                console.log("test ", id);
-            });
-            this.socket.on('threadStarted', (id) => {
-                console.log("thread started ", id);
-                this.onThreadStarted(id);
-            });
-            this.socket.on('gotfig', (fig) => {
-                this.displayImg(fig);
-            });
-            this.socket.on('layer_names', (arr) => {
-                this.gotLayerNames(arr);
-            });
-        //     this.socket.on('threadFinished', (id) => {
-        //         console.log('threadFinished', id);
-        //         this.removeActiveThread(id);
-        //     });
-            this.socket.on('workFinished', (obj) => {
-                // console.log('workFinished', obj);
-                this.doClientWork(obj);
-            });
-        //         if(obj.notFound) {
-        //             console.log("Not Found");
-        //         } else if(obj.exception) {
-        //             //General Exception returned to Thread to handle what to do when thread receives exception from work.
-        //             console.log("Got Exception");
-        //             this.handleWorkException(obj.id);
-        //         } else {
-        //             this.doClientWork(obj);
-        //         }
-        //     });
-        });
+        this.reset();
+        this.connectSocket();
     },
     methods: {
+        reset() {
+            this.imageBytesArr = [];
+            this.textArr = [];
+        },
+        getConnectClass() {
+            let classes = [];
+            if(this.connected) {
+                classes.push("btn-primary");
+            } else {
+                classes.push("btn-danger");
+            }
+            return classes;
+        },
+        connectSocket() {
+            this.socket = io.connect('http://127.0.0.1:5000');
+            this.socket.on('connect',()=>{
+                console.log("connected");
+                this.onConnected();
+                this.socket.on('test', (id) => {
+                    console.log("test ", id);
+                });
+                this.socket.on('threadStarted', (id) => {
+                    console.log("thread started ", id);
+                    this.onThreadStarted(id);
+                });
+                this.socket.on('gotfig', (fig) => {
+                    this.displayImg(fig);
+                });
+                this.socket.on('gotfigs', (figs) => {
+                    this.displayFigs(figs);
+                });
+                this.socket.on('layer_names', (arr) => {
+                    this.gotLayerNames(arr);
+                });
+
+                this.socket.on('workFinished', (obj) => {
+                    this.doClientWork(obj);
+                });
+            });
+            this.socket.on('disconnect',()=>{
+                console.log('disconnect');
+                this.onDisconnected();
+            });
+            this.socket.on('connect_error', (error) => {
+                console.log("Error");
+                this.onDisconnected();
+            });
+
+        },
         onConnected() {
             this.socket.emit('init');
+            this.connected = true;
+            this.reset();
+        },
+        onDisconnected() {
+            this.socket.close();
+            this.connected = false;
         },
         gotLayerNames(arr) {
             this.inception_layers = arr;
         },
+        changeSampleImg(imgName) {
+            this.reset();
+            let msg = {'name': imgName};
+            this.socket.emit('changeImg', msg);
+        },
         displayImg(content) {
             let mlpId = '#mlp_fig_1';
             var graph = $(mlpId);
-            console.log(content);
+            // console.log(content);
             this.imageBytesArr.push(content.axes[0].images[0].data);
             this.textArr.push(content.axes[0].texts[0].text);
+        },
+        displayFigs(figs) {
+            // console.log(figs);
+            figs.forEach(f => {
+                this.imageBytesArr.push(f.axes[0].images[0].data);
+                this.textArr.push(f.axes[0].texts[0].text);
+            });
+            this.isLoading = false;
+        },
+        getAllActivations() {
+            this.imageBytesArr = [];
+            this.textArr = [];
+            this.isLoading = true;
+            this.socket.emit('filteredFm', {filter: 'activations'});
         },
         getFeatureMaps() {
             console.log(this.selectedLayer);
             if(this.selectedLayer != null) {
                 this.socket.emit('allFm', this.selectedLayer);
             }
+        },
+        removeFM(i) {
+            this.imageBytesArr.splice(i, 1);
+            this.textArr.splice(i,1);
         },
         addNewThread() {
             if(!this.layers_map[this.selectedLayer]) {

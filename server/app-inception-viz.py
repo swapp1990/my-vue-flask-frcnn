@@ -39,34 +39,65 @@ TRAIN_DIR = DATASET_DIR +  "\\train"
 VALID_DIR = DATASET_DIR + "\\validation"
 IMG_SIZE = (299, 299, 3)
 BATCH_SIZE = 32
-activations = {}
-layer_names = []
 
-def initModel():
-    model = load_model('inceptionv3_flowers.h5')
-    #print(model.summary())
-    layer_outputs = [l.output for l in model.layers[:50]][1:]
-    for idx, layer in enumerate(model.layers[:50]):
-        layer_names.append({"i": idx, "name": layer.name})
+class Inception():
+    def __init__(self, filename):
+        self.model = self.loadModel(filename)
+        self.currImg = 'daisy'
+        self.activations = {}
+        self.layers = []
+        self.getModelActivations()
+        self.currIdxs = []
 
-    test_img = 'daisy.jpg'
-    img = image.load_img(test_img, target_size=(IMG_SIZE[0], IMG_SIZE[1]))
-    #plotImg(img)
-    img_t = image.img_to_array(img)
-    img_t = np.expand_dims(img_t, axis=0)
-    img_t /= 255.
+    def loadModel(self, filename):
+        model = load_model(filename)
+        print(model.summary())
+        return model
+    
+    def getModelActivations(self):
+        self.layers = []
+        self.activations = {}
+        layer_outputs = [l.output for l in self.model.layers[:50]][1:]
+        for idx, layer in enumerate(self.model.layers[:50]):
+            self.layers.append({"i": idx, "name": layer.name})
 
-    activation_model = Model(inputs=model.input, outputs=layer_outputs)
-    activations = activation_model.predict(img_t)
-    print("Act ")
-    return layer_names, activations
+        test_img = 'samples\\'+self.currImg+'.jpg'
+        img = image.load_img(test_img, target_size=(IMG_SIZE[0], IMG_SIZE[1]))
+        #plotImg(img)
+        img_t = image.img_to_array(img)
+        img_t = np.expand_dims(img_t, axis=0)
+        img_t /= 255.
+
+        activation_model = Model(inputs=self.model.input, outputs=layer_outputs)
+        self.activations = activation_model.predict(img_t)
 
 def getFigForLayer(layer_idx):
-    print(layer_names[layer_idx])
-    layer_name = layer_names[layer_idx]['name']
-    layer_fm = activations[layer_idx]
+    print(inceptionModel.layers[layer_idx])
+    layer_name = inceptionModel.layers[layer_idx]['name']
+    layer_fm = inceptionModel.activations[layer_idx]
     fig = showAllChannelsInFeatureMap(layer_name, layer_fm)
     return fig
+
+def getFigsArrayByFilter(filter):
+    figs = []
+    if filter == "activations":
+        filtered_layers = [l for l in inceptionModel.layers if 'activation' in l['name']]
+        filtered_layers = filtered_layers[:-1]
+        #print(filtered_layers)
+        for l in filtered_layers:
+            figs.append(getFigForLayer(l["i"]))
+        #print(len(figs))
+    return figs
+
+def getFigsArrayByIdxs():
+    idxs = inceptionModel.currIdxs
+    print("idxs ", idxs)
+    filtered_layers = [l for l in inceptionModel.layers if l['i'] in idxs]
+    figs = []
+    for l in filtered_layers:
+        figs.append(getFigForLayer(l["i"]))
+    print("len figs ", len(figs))
+    return figs
 
 def plotImg(img):
     plt.figure(figsize=(20,10))
@@ -126,7 +157,7 @@ def initTest():
     fig = showAllChannelsInFeatureMap(layer_name, layer_fm)
 
 #initTest()
-layer_names, activations = initModel()
+inceptionModel = Inception('inceptionv3_flowers.h5')
 
 def convertImgToFig(img):
     fig, ax = plt.subplots()
@@ -137,14 +168,33 @@ def convertImgToFig(img):
 ######################################### Socket #############################################
 @socketio.on('init')
 def init():
-    emit("layer_names", layer_names)
+    emit("layer_names", inceptionModel.layers)
+    inceptionModel.currIdxs = []
+
+@socketio.on('changeImg')
+def changeImg(msg):
+    imgName = msg['name']
+    if inceptionModel.currImg != imgName:
+        print("Get activations for new image " + imgName)
+        inceptionModel.currImg = imgName
+        inceptionModel.getModelActivations()
+        emit('gotfigs', getFigsArrayByIdxs())
 
 @socketio.on('allFm')
 def allFm(layerIdx):
     print("emit all FM ", layerIdx)
-
     if isinstance(layerIdx, int):
+        if layerIdx not in inceptionModel.currIdxs:
+            inceptionModel.currIdxs.append(layerIdx)
+            print(len(inceptionModel.currIdxs))
         emit('gotfig', getFigForLayer(layerIdx))
+
+@socketio.on('filteredFm')
+def filteredFm(msg):
+    if msg['filter']:
+        if msg['filter'] == "activations":
+            figs = getFigsArrayByFilter(msg['filter'])
+            emit('gotfigs', figs)
 ######################################################################################
 if __name__ == "__main__":
     # format = "%(asctime)s: %(message)s"
