@@ -17,6 +17,8 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 from flask import Response
 from flask_socketio import SocketIO, emit
+# import eventlet
+# eventlet.monkey_patch()
 
 import keras
 import keras.backend as K
@@ -30,7 +32,9 @@ from keras.models import load_model
 # instantiate the app
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'secret!'
-socketio = SocketIO(app, cors_allowed_origins="*")
+socketio = SocketIO(app, cors_allowed_origins="*", logger=True, async_mode='threading')
+log = logging.getLogger('werkzeug')
+log.setLevel(logging.ERROR)
 # enable CORS
 CORS(app, resources={r'/*': {'origins': '*'}}) 
 
@@ -40,6 +44,40 @@ VALID_DIR = DATASET_DIR + "\\validation"
 IMG_SIZE = (299, 299, 3)
 BATCH_SIZE = 32
 
+active_queues = []
+class Worker(threading.Thread):
+    def __init__(self, id):
+        threading.Thread.__init__(self)
+        self.mailbox = queue.Queue()
+        self.id = id
+        print("thread ", self.id)
+        active_queues.append(self.mailbox)
+    
+    def run(self):
+        while True:
+            data = self.mailbox.get()
+            print(self, 'received a message', data)
+            if self.id == data['id'] and data['action'] == 'start':
+                self.doWork()
+            if self.id == data['id'] and data['action'] == 'logs':
+                self.emitLogs(data['logs'])
+    
+    def doWork(self):
+        inceptionModel.trainModel()
+    
+    def emitLogs(self, logs):
+        print("emitLogs ", logs)
+        obj = {"id": self.id, "loss": logs['loss'].item()}
+        socketio.emit('TrainingLogs', obj)
+
+    def stop(self):
+        self.mailbox.put("shutdown")
+        self.join()
+
+def broadcast_event(data):
+    for q in active_queues:
+        q.put(data)
+
 class LossCallback(keras.callbacks.Callback):
     def __init__(self, model):
         self.model = model
@@ -48,8 +86,7 @@ class LossCallback(keras.callbacks.Callback):
     def on_batch_end(self, batch, logs={}):
         print("")
         print("Logs ", logs)
-        #emit("TrainingLogs", "test")
-        testLogs(logs)
+        braodcastLogs(logs)
 
 class Inception():
     def __init__(self):
@@ -98,10 +135,9 @@ class Inception():
         activation_model = Model(inputs=self.model.input, outputs=layer_outputs)
         self.activations = activation_model.predict(img_t)
 
-def testLogs(l):
-    print("test ", l)
-    emit("TrainingLogs", "test")
-    emit("test", 1)
+def braodcastLogs(l):
+    msg = {"action": "logs", "id": 0, "logs": l}
+    broadcast_event(msg)
 
 def getFigForLayer(layer_idx):
     print(inceptionModel.layers[layer_idx])
@@ -198,7 +234,18 @@ def init():
 
 @socketio.on('beginTraining')
 def beginTraining():
-    inceptionModel.trainModel()
+    #inceptionModel.trainModel()
+    thread = Worker(0)
+    thread.start()
+    thread2 = Worker(1)
+    thread2.start()
+    # msg = {"action": "start", "id": 0}
+    # broadcast_event(msg)
+
+@socketio.on('sendMsg')
+def sendMsg():
+    msg = {"action": "start", "id": 1}
+    broadcast_event(msg)
 
 @socketio.on('changeImg')
 def changeImg(msg):

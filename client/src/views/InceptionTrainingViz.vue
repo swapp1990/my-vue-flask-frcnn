@@ -34,6 +34,7 @@
             </div>
             <div v-else>
                 <button @click="beginTraining()"><i class="icon-bolt"></i></button>
+                <button @click="sendMsg()"><i class="icon-cog"></i></button>
             </div>
         </div>
     </div>
@@ -136,6 +137,9 @@ export default {
         },
         beginTraining() {
             this.socket.emit('beginTraining');
+        },
+        sendMsg() {
+            this.socket.emit('sendMsg');
         },
         gotLayerNames(arr) {
             this.inception_layers = arr;
