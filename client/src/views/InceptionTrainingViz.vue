@@ -2,34 +2,39 @@
     <div>
         <button :class="getConnectClass()" @click="connectSocket()"><i class="icon-magnet"></i></button>
         <div v-if="connected">
-            <hr>
-            <div>
-                <span v-for="f in imgNames">
-                    <button @click="changeSampleImg(f)"> {{f}}</button>
-                </span>
-            </div>
-            <div>
-                <button @click="getAllActivations()"> All Activations</button>
-            </div>
-            <div>
-                <select v-model="selectedLayer">
-                    <option disabled value="">Select Layer: </option>
-                    <option v-for="l in inception_layers" v-bind:value="l.i">{{l.name}}</option>
-                </select>
-                <button @click="getFeatureMaps()"><i class="icon-plus"></i></button>
-            </div>
-            <hr>
-            <div v-if="isLoading" class="spinner-grow" role="status">
-                <span class="sr-only">Loading...</span>
-            </div>
-            <div v-for="(imgB,i) in imageBytesArr">
-                <button @click="removeFM(i)"><i class="icon-remove"></i></button>
-                <span>{{textArr[i]}}</span>
-                <div v-if="imgB" class="landscape">
-                    <img v-bind:src="'data:image/jpeg;base64,'+imgB" />
+            <div v-if="!training">
+                <hr>
+                <div>
+                    <span v-for="f in imgNames">
+                        <button @click="changeSampleImg(f)"> {{f}}</button>
+                    </span>
                 </div>
+                <div>
+                    <button @click="getAllActivations()"> All Activations</button>
+                </div>
+                <div>
+                    <select v-model="selectedLayer">
+                        <option disabled value="">Select Layer: </option>
+                        <option v-for="l in inception_layers" v-bind:value="l.i">{{l.name}}</option>
+                    </select>
+                    <button @click="getFeatureMaps()"><i class="icon-plus"></i></button>
+                </div>
+                <hr>
+                <div v-if="isLoading" class="spinner-grow" role="status">
+                    <span class="sr-only">Loading...</span>
+                </div>
+                <div v-for="(imgB,i) in imageBytesArr">
+                    <button @click="removeFM(i)"><i class="icon-remove"></i></button>
+                    <span>{{textArr[i]}}</span>
+                    <div v-if="imgB" class="landscape">
+                        <img v-bind:src="'data:image/jpeg;base64,'+imgB" />
+                    </div>
+                </div>
+                <hr>
             </div>
-            <hr>
+            <div v-else>
+                <button @click="beginTraining()"><i class="icon-bolt"></i></button>
+            </div>
         </div>
     </div>
 </template>
@@ -51,6 +56,7 @@ export default {
             connected: false,
             isLoading: false,
             //Inception
+            training: true,
             imgNames: ['daisy', 'dandelion', 'rose', 'sunflower', 'tulip'],
             inception_layers: [],
             currId: 0,
@@ -89,6 +95,9 @@ export default {
                     console.log("thread started ", id);
                     this.onThreadStarted(id);
                 });
+                this.socket.on('TrainingLogs', (logs) => {
+                    console.log(logs);
+                });
                 this.socket.on('gotfig', (fig) => {
                     this.displayImg(fig);
                 });
@@ -111,6 +120,9 @@ export default {
                 console.log("Error");
                 this.onDisconnected();
             });
+            this.socket.on('error', (err) => {
+                console.log("Error!", err);
+            });
 
         },
         onConnected() {
@@ -121,6 +133,9 @@ export default {
         onDisconnected() {
             this.socket.close();
             this.connected = false;
+        },
+        beginTraining() {
+            this.socket.emit('beginTraining');
         },
         gotLayerNames(arr) {
             this.inception_layers = arr;

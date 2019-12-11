@@ -40,19 +40,46 @@ VALID_DIR = DATASET_DIR + "\\validation"
 IMG_SIZE = (299, 299, 3)
 BATCH_SIZE = 32
 
+class LossCallback(keras.callbacks.Callback):
+    def __init__(self, model):
+        self.model = model
+        self.layer_out = self.model.get_layer("activation_9").output
+    
+    def on_batch_end(self, batch, logs={}):
+        print("")
+        print("Logs ", logs)
+        #emit("TrainingLogs", "test")
+        testLogs(logs)
+
 class Inception():
-    def __init__(self, filename):
-        self.model = self.loadModel(filename)
+    def __init__(self):
+        self.model = None
         self.currImg = 'daisy'
         self.activations = {}
         self.layers = []
-        self.getModelActivations()
         self.currIdxs = []
+        train_datagen_f = ImageDataGenerator(rotation_range=20, width_shift_range=0.2, height_shift_range=0.2, horizontal_flip=True, rescale=1./255)
+        val_datagen_f = ImageDataGenerator(rescale=1./255)
+        self.train_gen = train_datagen_f.flow_from_directory(TRAIN_DIR, target_size=(IMG_SIZE[0], IMG_SIZE[1]), batch_size=BATCH_SIZE, class_mode="categorical")
+        self.val_gen = val_datagen_f.flow_from_directory(VALID_DIR, target_size=(IMG_SIZE[0], IMG_SIZE[1]), batch_size=BATCH_SIZE, class_mode="categorical")
+    
+    def trainModel(self):
+        inp = Input(IMG_SIZE)
+        inception = InceptionV3(include_top=False, weights='imagenet', input_tensor=inp, input_shape=IMG_SIZE, pooling='avg')
+        x = inception.output
+        x = Dense(256, activation='relu')(x)
+        x = Dropout(0.1)(x)
+        out = Dense(5, activation='softmax')(x)
+
+        full_model = Model(inp, out)
+        #print(full_model.summary())
+        full_model.compile(optimizer='adam', loss='categorical_crossentropy')
+
+        lossCallback = LossCallback(full_model)
+        full_model.fit_generator(self.train_gen, steps_per_epoch=10, epochs=1, validation_data=self.val_gen, verbose=1, callbacks=[lossCallback])
 
     def loadModel(self, filename):
-        model = load_model(filename)
-        print(model.summary())
-        return model
+        self.model = load_model(filename)
     
     def getModelActivations(self):
         self.layers = []
@@ -70,6 +97,11 @@ class Inception():
 
         activation_model = Model(inputs=self.model.input, outputs=layer_outputs)
         self.activations = activation_model.predict(img_t)
+
+def testLogs(l):
+    print("test ", l)
+    emit("TrainingLogs", "test")
+    emit("test", 1)
 
 def getFigForLayer(layer_idx):
     print(inceptionModel.layers[layer_idx])
@@ -137,27 +169,20 @@ def showAllChannelsInFeatureMap(name, fm):
     mp_fig = mpld3.fig_to_dict(fig)
     return mp_fig
 
+def initActivations():
+    inceptionModel = Inception()
+    inceptionModel.loadModel('inceptionv3_flowers.h5')
+    inceptionModel.getModelActivations()
+    return inceptionModel
+
 def initTest():
-    model = load_model('inceptionv3_flowers.h5')
-    print(model.summary())
-    layer_outputs = [l.output for l in model.layers[:50]][1:]
-    test_img = 'daisy.jpg'
-    img = image.load_img(test_img, target_size=(IMG_SIZE[0], IMG_SIZE[1]))
-    plotImg(img)
-    img_t = image.img_to_array(img)
-    img_t = np.expand_dims(img_t, axis=0)
-    img_t /= 255.
-
-    activation_model = Model(inputs=model.input, outputs=layer_outputs)
-    activations = activation_model.predict(img_t)
-
-    layer_name = 'conv2d_1'
-    layer_fm = activations[1]
-
-    fig = showAllChannelsInFeatureMap(layer_name, layer_fm)
+    inceptionModel = Inception()
+    inceptionModel.trainModel()
+    return
 
 #initTest()
-inceptionModel = Inception('inceptionv3_flowers.h5')
+#inceptionModel = initActivations()
+inceptionModel = Inception()
 
 def convertImgToFig(img):
     fig, ax = plt.subplots()
@@ -170,6 +195,10 @@ def convertImgToFig(img):
 def init():
     emit("layer_names", inceptionModel.layers)
     inceptionModel.currIdxs = []
+
+@socketio.on('beginTraining')
+def beginTraining():
+    inceptionModel.trainModel()
 
 @socketio.on('changeImg')
 def changeImg(msg):
