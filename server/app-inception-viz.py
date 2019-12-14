@@ -56,19 +56,26 @@ class Worker(threading.Thread):
     def run(self):
         while True:
             data = self.mailbox.get()
-            print(self, 'received a message', data)
+            print(self, 'received a message', data['action'], str(data['id']))
             if self.id == data['id'] and data['action'] == 'start':
                 self.doWork()
             if self.id == data['id'] and data['action'] == 'logs':
                 self.emitLogs(data['logs'])
+            if self.id == data['id'] and data['action'] == 'showFig':
+                self.emitFig(data['fig'])
     
     def doWork(self):
         inceptionModel.trainModel()
     
     def emitLogs(self, logs):
         print("emitLogs ", logs)
-        obj = {"id": self.id, "loss": logs['loss'].item()}
+        obj = {"id": self.id, "loss": logs['loss'].item(), "batch":logs['batch']}
         socketio.emit('TrainingLogs', obj)
+    
+    def emitFig(self, fig):
+        obj = {"id": self.id, "fig": fig}
+        print("emitFig")
+        socketio.emit('TrainingFigs', obj)
 
     def stop(self):
         self.mailbox.put("shutdown")
@@ -79,14 +86,20 @@ def broadcast_event(data):
         q.put(data)
 
 class LossCallback(keras.callbacks.Callback):
-    def __init__(self, model):
+    def __init__(self, model, img_t):
         self.model = model
+        self.img_t = img_t
         self.layer_out = self.model.get_layer("activation_9").output
     
     def on_batch_end(self, batch, logs={}):
         print("")
         print("Logs ", logs)
+        activation_model = Model(inputs=self.model.input, outputs=self.layer_out)
+        activation = activation_model.predict(self.img_t)
+        fig = showAllChannelsInFeatureMap("activation_9", activation)
+        #logs["fig"] = fig
         braodcastLogs(logs)
+        braodcastFig(fig)
 
 class Inception():
     def __init__(self):
@@ -112,8 +125,17 @@ class Inception():
         #print(full_model.summary())
         full_model.compile(optimizer='adam', loss='categorical_crossentropy')
 
-        lossCallback = LossCallback(full_model)
-        full_model.fit_generator(self.train_gen, steps_per_epoch=10, epochs=1, validation_data=self.val_gen, verbose=1, callbacks=[lossCallback])
+        imgT = self.getSampleImgTensor()
+        lossCallback = LossCallback(full_model, imgT)
+        full_model.fit_generator(self.train_gen, steps_per_epoch=100, epochs=5, validation_data=self.val_gen, verbose=1, callbacks=[lossCallback])
+    
+    def getSampleImgTensor(self):
+        test_img = 'samples\\'+'daisy.jpg'
+        img = image.load_img(test_img, target_size=(IMG_SIZE[0], IMG_SIZE[1]))
+        img_t = image.img_to_array(img)
+        img_t = np.expand_dims(img_t, axis=0)
+        img_t /= 255.
+        return img_t
 
     def loadModel(self, filename):
         self.model = load_model(filename)
@@ -137,6 +159,10 @@ class Inception():
 
 def braodcastLogs(l):
     msg = {"action": "logs", "id": 0, "logs": l}
+    broadcast_event(msg)
+
+def braodcastFig(fig):
+    msg = {"action": "showFig", "id": 0, "fig": fig}
     broadcast_event(msg)
 
 def getFigForLayer(layer_idx):

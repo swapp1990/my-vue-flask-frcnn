@@ -35,6 +35,37 @@
             <div v-else>
                 <button @click="beginTraining()"><i class="icon-bolt"></i></button>
                 <button @click="sendMsg()"><i class="icon-cog"></i></button>
+                <div>
+                    <span>Epoch/Batch: {{epoch}}/{{batch}}, Train Loss: {{trainLoss}}</span>
+                </div>
+                <hr>
+                <div v-for="(imgB,i) in imgTrainBytesArr">
+                    <button @click="removeFM(i)"><i class="icon-remove"></i></button>
+                    <span>{{textTrainArr[i]}}</span>
+                    <div v-if="imgB" class="landscape">
+                        <img v-bind:src="'data:image/jpeg;base64,'+imgB" />
+                    </div>
+                </div>
+                <div>
+                    <!-- <span v-for="(imgC, i) in imgTrainBytesCacheArr">
+                        <button @click="showCache(i)">{{i}}</button>
+                    </span> -->
+                </div>
+                <hr>
+                <div>
+                    <div>
+                        <label for="customRange1">Speed</label>
+                        <input type="range" class="custom-range" id="customRange1" min="100" max="1000"
+                                v-on:change="changeSpeed()" v-model="gifSpeed">
+                        <button @click="refreshGif()">Refresh</button>
+                    </div>
+                    <button @click="showCacheGif()">CacheGif</button>
+                    <span>{{imgCacheidx}},{{this.gifSpeed}}</span>
+                </div>
+                <div class="landscape">
+                    <img v-bind:src="'data:image/jpeg;base64,'+this.imgCache" />
+                </div>
+                <hr>
             </div>
         </div>
     </div>
@@ -63,7 +94,17 @@ export default {
             currId: 0,
             selectedLayer: null,
             imageBytesArr: [],
-            textArr: []
+            textArr: [],
+            imgTrainBytesArr: [],
+            imgTrainBytesCacheArr: [],
+            textTrainArr: [],
+            imgCache: null,
+            imgCacheidx: 0,
+            trainLoss: 0,
+            batch: 0,
+            epoch: 0,
+            gifSpeed: 500,
+            myInterval: null
         }
     },
     mounted(){
@@ -98,6 +139,12 @@ export default {
                 });
                 this.socket.on('TrainingLogs', (logs) => {
                     console.log(logs);
+                    this.trainLoss = logs.loss.toFixed(2);
+                    this.batch = logs.batch;
+                });
+                this.socket.on('TrainingFigs', (figs) => {
+                    // console.log(figs);
+                    this.displayTrainingImgs(figs.fig);
                 });
                 this.socket.on('gotfig', (fig) => {
                     this.displayImg(fig);
@@ -156,6 +203,13 @@ export default {
             this.imageBytesArr.push(content.axes[0].images[0].data);
             this.textArr.push(content.axes[0].texts[0].text);
         },
+        displayTrainingImgs(f) {
+            this.imgTrainBytesArr = []
+            this.textTrainArr = []
+            this.imgTrainBytesArr.push(f.axes[0].images[0].data);
+            this.imgTrainBytesCacheArr.push(f.axes[0].images[0].data);
+            this.textTrainArr.push(f.axes[0].texts[0].text);
+        },
         displayFigs(figs) {
             // console.log(figs);
             figs.forEach(f => {
@@ -163,6 +217,30 @@ export default {
                 this.textArr.push(f.axes[0].texts[0].text);
             });
             this.isLoading = false;
+        },
+        showCache(i) {
+            this.imgCache = this.imgTrainBytesCacheArr[i];
+        },
+        showCacheGif() {
+            this.imgCacheidx = 0;
+            if(this.myInterval != null) {
+                clearInterval(this.myInterval);
+            }
+            this.myInterval = setInterval(() => {
+                this.imgCacheidx++;
+                if(this.imgTrainBytesCacheArr[this.imgCacheidx]) {
+                    this.imgCache = this.imgTrainBytesCacheArr[this.imgCacheidx];
+                } else {
+                    this.imgCacheidx = 0;
+                }
+            }, this.gifSpeed);
+        },
+        refreshGif() {
+            this.showCacheGif();
+        },
+        changeSpeed(val) {
+            console.log(val);
+            //this.gifSpeed = val;
         },
         getAllActivations() {
             this.imageBytesArr = [];
