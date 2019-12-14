@@ -37,6 +37,7 @@
                 <button @click="sendMsg()"><i class="icon-cog"></i></button>
                 <div>
                     <span>Epoch/Batch: {{epoch}}/{{batch}}, Train Loss: {{trainLoss}}</span>
+                    <div class="mlp_div" id="mlp_loss_graph"></div>
                 </div>
                 <hr>
                 <div v-for="(imgB,i) in imgTrainBytesArr">
@@ -46,24 +47,9 @@
                         <img v-bind:src="'data:image/jpeg;base64,'+imgB" />
                     </div>
                 </div>
-                <div>
-                    <!-- <span v-for="(imgC, i) in imgTrainBytesCacheArr">
-                        <button @click="showCache(i)">{{i}}</button>
-                    </span> -->
-                </div>
                 <hr>
                 <div>
-                    <div>
-                        <label for="customRange1">Speed</label>
-                        <input type="range" class="custom-range" id="customRange1" min="100" max="1000"
-                                v-on:change="changeSpeed()" v-model="gifSpeed">
-                        <button @click="refreshGif()">Refresh</button>
-                    </div>
-                    <button @click="showCacheGif()">CacheGif</button>
-                    <span>{{imgCacheidx}},{{this.gifSpeed}}</span>
-                </div>
-                <div class="landscape">
-                    <img v-bind:src="'data:image/jpeg;base64,'+this.imgCache" />
+                    <images-gif :imgArr="imgTrainBytesCacheArr" v-on:splice="onSplice"></images-gif>
                 </div>
                 <hr>
             </div>
@@ -75,9 +61,12 @@
 import {mapGetters} from 'vuex'
 import $ from 'jquery'
 
+import imagesGif from '@/components/ImagesGif.vue';
+
 export default {
     name: "InceptionTrain",
     components: {
+        imagesGif: imagesGif
     },
     computed: {
 
@@ -104,7 +93,6 @@ export default {
             batch: 0,
             epoch: 0,
             gifSpeed: 500,
-            myInterval: null
         }
     },
     mounted(){
@@ -141,6 +129,10 @@ export default {
                     console.log(logs);
                     this.trainLoss = logs.loss.toFixed(2);
                     this.batch = logs.batch;
+                });
+                this.socket.on('TrainingLossGraph', (html) => {
+                    // console.log(html);
+                    this.displayLossGraph(html.fig);
                 });
                 this.socket.on('TrainingFigs', (figs) => {
                     // console.log(figs);
@@ -207,8 +199,21 @@ export default {
             this.imgTrainBytesArr = []
             this.textTrainArr = []
             this.imgTrainBytesArr.push(f.axes[0].images[0].data);
-            this.imgTrainBytesCacheArr.push(f.axes[0].images[0].data);
             this.textTrainArr.push(f.axes[0].texts[0].text);
+            this.addToCache(f);
+        },
+        displayLossGraph(img) {
+            let mlpId = '#mlp_loss_graph';
+            var graph1 = $(mlpId);
+            graph1.html(img);
+        },
+        addToCache(f) {
+            this.imgTrainBytesCacheArr.push(f.axes[0].images[0].data);
+            console.log("imgTrainBytesCacheArr", this.imgTrainBytesCacheArr.length);
+        },
+        onSplice(idx) {
+            this.imgTrainBytesCacheArr.splice(idx, 1);
+            console.log("imgTrainBytesCacheArrS", this.imgTrainBytesCacheArr.length);
         },
         displayFigs(figs) {
             // console.log(figs);
@@ -222,18 +227,7 @@ export default {
             this.imgCache = this.imgTrainBytesCacheArr[i];
         },
         showCacheGif() {
-            this.imgCacheidx = 0;
-            if(this.myInterval != null) {
-                clearInterval(this.myInterval);
-            }
-            this.myInterval = setInterval(() => {
-                this.imgCacheidx++;
-                if(this.imgTrainBytesCacheArr[this.imgCacheidx]) {
-                    this.imgCache = this.imgTrainBytesCacheArr[this.imgCacheidx];
-                } else {
-                    this.imgCacheidx = 0;
-                }
-            }, this.gifSpeed);
+            
         },
         refreshGif() {
             this.showCacheGif();
@@ -369,6 +363,12 @@ export default {
 </script>
 
 <style lang="scss" scoped>
+.mlp_div {
+    background-color: aqua;
+    width: 400px;
+    height: 400px;
+}
+
 $base-spacing-unit: 24px;
 $half-spacing-unit: $base-spacing-unit/2;
 img {

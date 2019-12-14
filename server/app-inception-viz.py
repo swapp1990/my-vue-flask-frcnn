@@ -10,6 +10,8 @@ from matplotlib import pyplot as plt
 import numpy as np
 import tensorflow as tf
 import cv2
+from matplotlib.collections import EventCollection
+import statistics
 
 import lucid.modelzoo.vision_models as models
 
@@ -57,13 +59,16 @@ class Worker(threading.Thread):
         while True:
             data = self.mailbox.get()
             print(self, 'received a message', data['action'], str(data['id']))
-            if self.id == data['id'] and data['action'] == 'start':
-                self.doWork()
-            if self.id == data['id'] and data['action'] == 'logs':
-                self.emitLogs(data['logs'])
-            if self.id == data['id'] and data['action'] == 'showFig':
-                self.emitFig(data['fig'])
-    
+            if self.id == data['id']:
+                if data['action'] == 'start':
+                    self.doWork()
+                if data['action'] == 'logs':
+                    self.emitLogs(data['logs'])
+                if data['action'] == 'showFig':
+                    self.emitFig(data['fig'])
+                if data['action'] == 'showGraph':
+                    self.emitGraph(data['fig'])
+
     def doWork(self):
         inceptionModel.trainModel()
     
@@ -76,6 +81,11 @@ class Worker(threading.Thread):
         obj = {"id": self.id, "fig": fig}
         print("emitFig")
         socketio.emit('TrainingFigs', obj)
+    
+    def emitGraph(self, fig):
+        obj = {"id": self.id, "fig": fig}
+        print("emitGraph")
+        socketio.emit('TrainingLossGraph', obj)
 
     def stop(self):
         self.mailbox.put("shutdown")
@@ -90,16 +100,41 @@ class LossCallback(keras.callbacks.Callback):
         self.model = model
         self.img_t = img_t
         self.layer_out = self.model.get_layer("activation_9").output
+        self.lossesHist = []
+        self.meanLossesHist = []
     
     def on_batch_end(self, batch, logs={}):
         print("")
         print("Logs ", logs)
-        activation_model = Model(inputs=self.model.input, outputs=self.layer_out)
-        activation = activation_model.predict(self.img_t)
-        fig = showAllChannelsInFeatureMap("activation_9", activation)
-        #logs["fig"] = fig
-        braodcastLogs(logs)
-        braodcastFig(fig)
+        l = float("{0:.2f}".format(logs['loss']))
+        #print(l)
+        self.lossesHist.append(l)
+        currMean = statistics.mean(self.lossesHist)
+        self.meanLossesHist.append(currMean)
+
+        lossGraph = None
+        if len(self.lossesHist) > 2:
+            lossGraph = self.getLossPlotFig(self.lossesHist, self.meanLossesHist)
+
+        broadcastLogs(logs)
+        if lossGraph is not None:
+            broadcastLossGraph(lossGraph)
+        
+        if batch%5 == 0:
+            activation_model = Model(inputs=self.model.input, outputs=self.layer_out)
+            activation = activation_model.predict(self.img_t)
+            fig = showAllChannelsInFeatureMap("activation_9", activation)
+            broadcastFig(fig)
+    
+    def getLossPlotFig(self,data1,data2):
+        xdata = [i for i in range(len(data1))]
+        fig = plt.figure(figsize=(4,4))
+        ax = fig.add_subplot(111)
+        ax.plot(xdata, data1, 'b-', xdata, data2, 'r-')
+        #plt.show()
+        # fig = mpld3.fig_to_dict(fig)
+        fig = mpld3.fig_to_html(fig)
+        return fig
 
 class Inception():
     def __init__(self):
@@ -157,12 +192,16 @@ class Inception():
         activation_model = Model(inputs=self.model.input, outputs=layer_outputs)
         self.activations = activation_model.predict(img_t)
 
-def braodcastLogs(l):
+def broadcastLogs(l):
     msg = {"action": "logs", "id": 0, "logs": l}
     broadcast_event(msg)
 
-def braodcastFig(fig):
+def broadcastFig(fig):
     msg = {"action": "showFig", "id": 0, "fig": fig}
+    broadcast_event(msg)
+
+def broadcastLossGraph(fig):
+    msg = {"action": "showGraph", "id": 0, "fig": fig}
     broadcast_event(msg)
 
 def getFigForLayer(layer_idx):
@@ -245,6 +284,7 @@ def initTest():
 #initTest()
 #inceptionModel = initActivations()
 inceptionModel = Inception()
+
 
 def convertImgToFig(img):
     fig, ax = plt.subplots()
