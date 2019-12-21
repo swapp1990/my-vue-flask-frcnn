@@ -13,6 +13,7 @@
     "bootstrap-vue": "^2.0.0-rc.19",
     "core-js": "^2.6.5",
     "jquery": "^3.4.1",
+    "sass-loader": "^8.0.0",
     "vue": "^2.6.10",
     "vue-picture-input": "^2.1.6",
     "vue-resize": "^0.4.5",
@@ -29,6 +30,7 @@
     "babel-eslint": "^10.0.1",
     "eslint": "^5.16.0",
     "eslint-plugin-vue": "^5.0.0",
+    "node-sass": "^4.13.0",
     "raw-loader": "^3.1.0",
     "vue-template-compiler": "^2.5.21"
   },
