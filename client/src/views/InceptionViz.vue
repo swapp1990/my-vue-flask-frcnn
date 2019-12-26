@@ -2,17 +2,18 @@
     <div>
         <button :class="getConnectClass()" @click="connectSocket()"><i class="icon-magnet"></i></button>
         <div v-if="connected">
-            <div>
-                <hr>
-                <span v-for="f in imgNames">
-                    <button @click="changeSampleImg(f)"> {{f}}</button>
-                </span>
-                <hr>
-            </div>
             <div v-if="!training">
                 <hr>
                 <div>
                     <div class="p-2">
+                        <div class="p-1">
+                            <label v-for="f in imgNames" :class="f === pickedImg ? 'btn btn-secondary active' : 'btn btn-secondary'"> 
+                                <input type="radio" :value="f" v-model="pickedImg"> {{f}}
+                            </label>
+                            <!-- <span v-for="f in imgNames">
+                                <button @click="changeSampleImg(f)"> {{f}}</button>
+                            </span> -->
+                        </div>
                         <div class="p-1">
                             <select v-model="selectedLayerIdx">
                                 <option disabled value="">Select Layer: </option>
@@ -95,7 +96,8 @@ export default {
             isLoading: false,
             //Inception
             training: false,
-            imgNames: ['daisy', 'dandelion', 'rose', 'sunflower', 'tulip'],
+            imgNames: ['None', 'daisy', 'dandelion', 'rose', 'sunflower', 'tulip'],
+            pickedImg: 'None',
             inception_layers: [
                 {i: 0, name:'mixed3a'},
                 {i: 1, name:'mixed3b'},
@@ -228,7 +230,7 @@ export default {
         getFeatureMap() {
             let genDetails = {'itern': this.itern,'pyramidLevels': this.pyramidLevels, 'saturation': this.saturation, 'shift': this.shift};
             let selectedlayer_name = this.inception_layers[this.selectedLayerIdx].name;
-            let msg = {'layer_name': selectedlayer_name, 'featureMapIdx': this.featureMapIdx, 'genDetails': genDetails};
+            let msg = {'imageType': this.pickedImg, 'layer_name': selectedlayer_name, 'featureMapIdx': this.featureMapIdx, 'genDetails': genDetails};
             this.socket.emit('getFeatureMap', msg);
             this.isLoading = true;
         },
