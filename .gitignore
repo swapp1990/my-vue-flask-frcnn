@@ -12,3 +12,4 @@ package-lock.json
 *.hdf5
 *.img
 *.pickle
+server/InceptionV1.pb

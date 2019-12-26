@@ -29,7 +29,8 @@ export default {
             gifSpeed: 500,
             myInterval: null,
             imgRemoveIndex: 1,
-            removedImgs: 0
+            removedImgs: 0,
+            maxArrLen: 20
         }
     },
     watch: {
@@ -43,7 +44,7 @@ export default {
     },
     methods: {
         processArr() {
-            if(this.imgArr.length > 10) {
+            if(this.imgArr.length > this.maxArrLen) {
                 this.$emit('splice', this.imgRemoveIndex);
                 this.removedImgs++;
                 if(this.removedImgs % 10 == 0) {

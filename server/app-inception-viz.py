@@ -58,7 +58,7 @@ class Worker(threading.Thread):
     def run(self):
         while True:
             data = self.mailbox.get()
-            print(self, 'received a message', data['action'], str(data['id']))
+            #print(self, 'received a message', data['action'], str(data['id']))
             if self.id == data['id']:
                 if data['action'] == 'start':
                     self.doWork()
@@ -68,6 +68,8 @@ class Worker(threading.Thread):
                     self.emitFig(data['fig'])
                 if data['action'] == 'showGraph':
                     self.emitGraph(data['fig'])
+                if data['action'] == 'layers':
+                    self.emitGeneral(data)
 
     def doWork(self):
         inceptionModel.trainModel()
@@ -86,6 +88,10 @@ class Worker(threading.Thread):
         obj = {"id": self.id, "fig": fig}
         print("emitGraph")
         socketio.emit('TrainingLossGraph', obj)
+    
+    def emitGeneral(self, msg):
+        print('emitGeneral')
+        socketio.emit('General', msg)
 
     def stop(self):
         self.mailbox.put("shutdown")
@@ -97,15 +103,31 @@ def broadcast_event(data):
 
 class LossCallback(keras.callbacks.Callback):
     def __init__(self, model, img_t):
+        self.updateGap = 1
         self.model = model
         self.img_t = img_t
-        self.layer_out = self.model.get_layer("activation_9").output
         self.lossesHist = []
         self.meanLossesHist = []
+        self.intermediateLayers = ["activation_9"]
+        self.activation = None
+        
+        self.layer_out = self.model.get_layer(self.intermediateLayers[0]).output
+        self.activation_model = Model(inputs=self.model.input, outputs=self.layer_out)
+
+    def modifyCallbackImg(self, newImgT):
+        print("Callback Image modified")
+        self.img_t = newImgT
+        #self.generateAndBroadcastFM(self.intermediateLayers[0])
+    
+    def modifyActivationModel(self, layerName):
+        print("Callback Layer modified")
+        self.intermediateLayers[0] = layerName
+        self.layer_out = self.model.get_layer(self.intermediateLayers[0]).output
+        self.activation_model = Model(inputs=self.model.input, outputs=self.layer_out)
     
     def on_batch_end(self, batch, logs={}):
         print("")
-        print("Logs ", logs)
+        #print("Logs ", logs)
         l = float("{0:.2f}".format(logs['loss']))
         #print(l)
         self.lossesHist.append(l)
@@ -120,10 +142,15 @@ class LossCallback(keras.callbacks.Callback):
         if lossGraph is not None:
             broadcastLossGraph(lossGraph)
         
-        if batch%5 == 0:
-            activation_model = Model(inputs=self.model.input, outputs=self.layer_out)
-            activation = activation_model.predict(self.img_t)
-            fig = showAllChannelsInFeatureMap("activation_9", activation)
+        if batch%self.updateGap == 0:
+            #Performs intermediate activation for the current trained weights while training
+            self.activation = self.activation_model.predict(self.img_t)
+            self.generateAndBroadcastFM(self.intermediateLayers[0])
+
+    #Broadcast Figs (intermediate FMs) to client thread
+    def generateAndBroadcastFM(self, layer_name):
+        if self.activation is not None:
+            fig = showAllChannelsInFeatureMap(layer_name, self.activation)
             broadcastFig(fig)
     
     def getLossPlotFig(self,data1,data2):
@@ -138,19 +165,23 @@ class LossCallback(keras.callbacks.Callback):
 
 class Inception():
     def __init__(self):
-        self.model = None
-        self.currImg = 'daisy'
+        self.ptModel = None
+        self.currImgName = 'daisy'
         self.activations = {}
         self.layers = []
         self.currIdxs = []
+        self.lossCallback = None
         train_datagen_f = ImageDataGenerator(rotation_range=20, width_shift_range=0.2, height_shift_range=0.2, horizontal_flip=True, rescale=1./255)
         val_datagen_f = ImageDataGenerator(rescale=1./255)
         self.train_gen = train_datagen_f.flow_from_directory(TRAIN_DIR, target_size=(IMG_SIZE[0], IMG_SIZE[1]), batch_size=BATCH_SIZE, class_mode="categorical")
         self.val_gen = val_datagen_f.flow_from_directory(VALID_DIR, target_size=(IMG_SIZE[0], IMG_SIZE[1]), batch_size=BATCH_SIZE, class_mode="categorical")
-    
+
     def trainModel(self):
         inp = Input(IMG_SIZE)
         inception = InceptionV3(include_top=False, weights='imagenet', input_tensor=inp, input_shape=IMG_SIZE, pooling='avg')
+        for idx, layer in enumerate(inception.layers[:50]):
+            self.layers.append({"i": idx, "name": layer.name})
+        broadcastGeneral("layers", self.layers)
         x = inception.output
         x = Dense(256, activation='relu')(x)
         x = Dropout(0.1)(x)
@@ -160,37 +191,68 @@ class Inception():
         #print(full_model.summary())
         full_model.compile(optimizer='adam', loss='categorical_crossentropy')
 
-        imgT = self.getSampleImgTensor()
-        lossCallback = LossCallback(full_model, imgT)
-        full_model.fit_generator(self.train_gen, steps_per_epoch=100, epochs=5, validation_data=self.val_gen, verbose=1, callbacks=[lossCallback])
+        imgT = self.getSampleImgTensor(self.currImgName)
+        self.lossCallback = LossCallback(full_model, imgT)
+        full_model.fit_generator(self.train_gen, steps_per_epoch=100, epochs=5, validation_data=self.val_gen, verbose=1, callbacks=[self.lossCallback])
     
-    def getSampleImgTensor(self):
-        test_img = 'samples\\'+'daisy.jpg'
+    def modifyTrainingCallbackImg(self):
+        print('Modify Callback Image to ' + self.currImgName)
+        newImgT = self.getSampleImgTensor(self.currImgName)
+        self.lossCallback.modifyCallbackImg(newImgT)
+
+    def modifyTrainingCallbackLayer(self, layerIdx):
+        layer_name = self.layers[layerIdx]['name']
+        print('Modify Callback Layer to '+ layer_name)
+        self.lossCallback.modifyActivationModel(layer_name)
+
+    def getSampleImgTensor(self, name):
+        test_img = 'samples\\'+name+'.jpg'
         img = image.load_img(test_img, target_size=(IMG_SIZE[0], IMG_SIZE[1]))
         img_t = image.img_to_array(img)
         img_t = np.expand_dims(img_t, axis=0)
         img_t /= 255.
         return img_t
-
-    def loadModel(self, filename):
-        self.model = load_model(filename)
     
-    def getModelActivations(self):
-        self.layers = []
-        self.activations = {}
-        layer_outputs = [l.output for l in self.model.layers[:50]][1:]
-        for idx, layer in enumerate(self.model.layers[:50]):
-            self.layers.append({"i": idx, "name": layer.name})
-
-        test_img = 'samples\\'+self.currImg+'.jpg'
+    ################################ Pre-Trained #####################################
+    def loadPretrained(self):
+        self.loadModel('inceptionv3_flowers.h5')
+        self.getModelActivations()
+    
+    def changeImgPre(self):
+        test_img = 'samples\\'+self.currImgName+'.jpg'
         img = image.load_img(test_img, target_size=(IMG_SIZE[0], IMG_SIZE[1]))
         #plotImg(img)
         img_t = image.img_to_array(img)
         img_t = np.expand_dims(img_t, axis=0)
         img_t /= 255.
 
-        activation_model = Model(inputs=self.model.input, outputs=layer_outputs)
+        layer_outputs = [l.output for l in self.ptModel.layers[:50]][1:]
+        activation_model = Model(inputs=self.ptModel.input, outputs=layer_outputs)
         self.activations = activation_model.predict(img_t)
+
+    def loadModel(self, filename):
+        self.ptModel = load_model(filename)
+    
+    def getModelActivations(self):
+        self.layers = []
+        self.activations = {}
+        layer_outputs = [l.output for l in self.ptModel.layers[:50]][1:]
+        for idx, layer in enumerate(self.ptModel.layers[:50]):
+            self.layers.append({"i": idx, "name": layer.name})
+
+        test_img = 'samples\\'+self.currImgName+'.jpg'
+        img = image.load_img(test_img, target_size=(IMG_SIZE[0], IMG_SIZE[1]))
+        #plotImg(img)
+        img_t = image.img_to_array(img)
+        img_t = np.expand_dims(img_t, axis=0)
+        img_t /= 255.
+
+        activation_model = Model(inputs=self.ptModel.input, outputs=layer_outputs)
+        self.activations = activation_model.predict(img_t)
+
+def broadcastGeneral(name, content):
+    msg = {"action": name, "id": 0, name: content}
+    broadcast_event(msg)
 
 def broadcastLogs(l):
     msg = {"action": "logs", "id": 0, "logs": l}
@@ -270,12 +332,6 @@ def showAllChannelsInFeatureMap(name, fm):
     mp_fig = mpld3.fig_to_dict(fig)
     return mp_fig
 
-def initActivations():
-    inceptionModel = Inception()
-    inceptionModel.loadModel('inceptionv3_flowers.h5')
-    inceptionModel.getModelActivations()
-    return inceptionModel
-
 def initTest():
     inceptionModel = Inception()
     inceptionModel.trainModel()
@@ -285,7 +341,6 @@ def initTest():
 #inceptionModel = initActivations()
 inceptionModel = Inception()
 
-
 def convertImgToFig(img):
     fig, ax = plt.subplots()
     ax.imshow(img)
@@ -293,20 +348,34 @@ def convertImgToFig(img):
     return mp_fig
 
 ######################################### Socket #############################################
-@socketio.on('init')
-def init():
-    emit("layer_names", inceptionModel.layers)
-    inceptionModel.currIdxs = []
-
+################# Training
 @socketio.on('beginTraining')
 def beginTraining():
-    #inceptionModel.trainModel()
     thread = Worker(0)
     thread.start()
     thread2 = Worker(1)
     thread2.start()
     # msg = {"action": "start", "id": 0}
     # broadcast_event(msg)
+
+@socketio.on('changeImgTrain')
+def changeImgTrain(msg):
+    imgName = msg['name']
+    if inceptionModel.currImgName != imgName:
+        inceptionModel.currImgName = imgName
+        inceptionModel.modifyTrainingCallbackImg()
+
+@socketio.on('modifyLayer')
+def modifyLayer(layerIdx):
+        inceptionModel.modifyTrainingCallbackLayer(layerIdx)
+
+################### Pretrained
+@socketio.on('init')
+def init(isTraining):
+    if not isTraining:
+        inceptionModel.loadPretrained()
+        emit("layer_names", inceptionModel.layers)
+        inceptionModel.currIdxs = []
 
 @socketio.on('sendMsg')
 def sendMsg():
@@ -316,9 +385,9 @@ def sendMsg():
 @socketio.on('changeImg')
 def changeImg(msg):
     imgName = msg['name']
-    if inceptionModel.currImg != imgName:
+    if inceptionModel.currImgName != imgName:
         print("Get activations for new image " + imgName)
-        inceptionModel.currImg = imgName
+        inceptionModel.currImgName = imgName
         inceptionModel.getModelActivations()
         emit('gotfigs', getFigsArrayByIdxs())
 

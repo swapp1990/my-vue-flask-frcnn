@@ -2,22 +2,26 @@
     <div>
         <button :class="getConnectClass()" @click="connectSocket()"><i class="icon-magnet"></i></button>
         <div v-if="connected">
+            <div>
+                <hr>
+                <span v-for="f in imgNames">
+                    <button @click="changeSampleImg(f)"> {{f}}</button>
+                </span>
+                <hr>
+            </div>
+             <div>
+                <hr>
+                <select v-model="selectedLayer">
+                    <option disabled value="">Select Layer: </option>
+                    <option v-for="l in inception_layers" v-bind:value="l.i">{{l.name}}</option>
+                </select>
+                <button @click="modifyFeatureMaps()"><i class="icon-plus"></i></button>
+                <hr>
+            </div>
             <div v-if="!training">
                 <hr>
                 <div>
-                    <span v-for="f in imgNames">
-                        <button @click="changeSampleImg(f)"> {{f}}</button>
-                    </span>
-                </div>
-                <div>
                     <button @click="getAllActivations()"> All Activations</button>
-                </div>
-                <div>
-                    <select v-model="selectedLayer">
-                        <option disabled value="">Select Layer: </option>
-                        <option v-for="l in inception_layers" v-bind:value="l.i">{{l.name}}</option>
-                    </select>
-                    <button @click="getFeatureMaps()"><i class="icon-plus"></i></button>
                 </div>
                 <hr>
                 <div v-if="isLoading" class="spinner-grow" role="status">
@@ -77,7 +81,7 @@ export default {
             connected: false,
             isLoading: false,
             //Inception
-            training: true,
+            training: false,
             imgNames: ['daisy', 'dandelion', 'rose', 'sunflower', 'tulip'],
             inception_layers: [],
             currId: 0,
@@ -103,6 +107,8 @@ export default {
         reset() {
             this.imageBytesArr = [];
             this.textArr = [];
+            this.imgTrainBytesArr = [];
+            this.textTrainArr = [];
         },
         getConnectClass() {
             let classes = [];
@@ -125,8 +131,11 @@ export default {
                     console.log("thread started ", id);
                     this.onThreadStarted(id);
                 });
+                this.socket.on('trainingStarted', () => {
+                    console.log('trainingStarted');
+                });
                 this.socket.on('TrainingLogs', (logs) => {
-                    console.log(logs);
+                    // console.log(logs);
                     this.trainLoss = logs.loss.toFixed(2);
                     this.batch = logs.batch;
                 });
@@ -145,7 +154,12 @@ export default {
                     this.displayFigs(figs);
                 });
                 this.socket.on('layer_names', (arr) => {
+                    console.log(arr);
                     this.gotLayerNames(arr);
+                });
+                this.socket.on('General', (msg) => {
+                    console.log(msg);
+                    this.handleGeneralMsg(msg);
                 });
 
                 this.socket.on('workFinished', (obj) => {
@@ -166,7 +180,7 @@ export default {
 
         },
         onConnected() {
-            this.socket.emit('init');
+            this.socket.emit('init', this.training);
             this.connected = true;
             this.reset();
         },
@@ -180,13 +194,24 @@ export default {
         sendMsg() {
             this.socket.emit('sendMsg');
         },
+        handleGeneralMsg(msg) {
+            if(msg.action) {
+                if(msg.action == "layers") {
+                    this.inception_layers = msg.layers;
+                }
+            }
+        },
         gotLayerNames(arr) {
             this.inception_layers = arr;
         },
         changeSampleImg(imgName) {
             this.reset();
             let msg = {'name': imgName};
-            this.socket.emit('changeImg', msg);
+            if(!this.training) {
+                this.socket.emit('changeImg', msg);
+            } else {
+                this.socket.emit('changeImgTrain', msg);
+            }
         },
         displayImg(content) {
             let mlpId = '#mlp_fig_1';
@@ -209,11 +234,10 @@ export default {
         },
         addToCache(f) {
             this.imgTrainBytesCacheArr.push(f.axes[0].images[0].data);
-            console.log("imgTrainBytesCacheArr", this.imgTrainBytesCacheArr.length);
+            // console.log("imgTrainBytesCacheArr", this.imgTrainBytesCacheArr.length);
         },
         onSplice(idx) {
             this.imgTrainBytesCacheArr.splice(idx, 1);
-            console.log("imgTrainBytesCacheArrS", this.imgTrainBytesCacheArr.length);
         },
         displayFigs(figs) {
             // console.log(figs);
@@ -242,10 +266,14 @@ export default {
             this.isLoading = true;
             this.socket.emit('filteredFm', {filter: 'activations'});
         },
-        getFeatureMaps() {
-            console.log(this.selectedLayer);
+        modifyFeatureMaps() {
+            console.log("Modify ", this.selectedLayer);
             if(this.selectedLayer != null) {
-                this.socket.emit('allFm', this.selectedLayer);
+                if(!this.training) {
+                    this.socket.emit('allFm', this.selectedLayer);
+                } else {
+                    this.socket.emit('modifyLayer', this.selectedLayer);
+                }
             }
         },
         removeFM(i) {
