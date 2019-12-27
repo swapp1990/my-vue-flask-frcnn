@@ -13,3 +13,4 @@ package-lock.json
 *.img
 *.pickle
 server/InceptionV1.pb
+server/testimgs-pix2pix/
